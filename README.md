@@ -1,4 +1,4 @@
- ## What
+## What
 
  This is a sample GraphQL API using AWS AppSync and AWS Lambda. The API is built using AWS CDK
  and uses NeptuneDB for data storage.
@@ -7,7 +7,7 @@
 
 
 
- ## How it works
+## How it works
 
 
  It contains a two lamdba functions:
@@ -78,6 +78,10 @@ And then deploy the CDK stack:
 
 
 ```
+cdk deploy
+
+or 
+
 npx aws-cdk deploy --profile <your-aws-profile>
 ```
 

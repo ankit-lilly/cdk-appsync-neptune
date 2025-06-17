@@ -113,3 +113,22 @@ Graph after: [Article: link="example.com/other-news"], [Article: link="example.c
 
 
 
+
+## Comparison with Cypher:
+
+
+```cypher
+MERGE (article:Article {link: $link})
+ON CREATE SET
+    article.id = $id,
+    article.title = $title,
+    article.description = $description,
+    article.body = $body,
+    article.publishedAt = $publishedAt,
+    article.createdAt = datetime()
+ON MATCH SET
+    article.lastUpdated = datetime()
+```
+
+This basically does the same thing as the Gremlin query above. It checks if an Article with the given link exists, and if not, it creates a new Article node 
+with the provided properties. If it exists, it just updates the `lastUpdated` property.
