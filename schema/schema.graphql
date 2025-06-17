@@ -1,0 +1,28 @@
+type Article {
+  id: ID!
+  title: String!
+  description: String
+  body: String
+  link: String!
+  publishedAt: AWSDateTime
+  tags: [String!]
+  categories: [String!]
+}
+
+type Query {
+  favorites(userId: ID!): [Article!]!
+  feed(limit: Int, offset: Int): [Article!]!
+  article(id: ID!): Article # Add a single article lookup
+  related(articleId: ID!, limit: Int = 10): [Article!]!
+  recommended(userId: ID!, limit: Int = 10): [Article!]!
+}
+
+type Mutation {
+  favorites(userId: ID!, articleId: ID!): Boolean
+}
+
+schema {
+  query: Query
+  mutation: Mutation
+}
+
