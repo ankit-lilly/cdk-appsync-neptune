@@ -4,6 +4,10 @@
 *.dll
 *.so
 *.dylib
+*.zip
+function.zip
+
+*bootstrap
 
 # Test binary, built with `go test -c`
 *.test
@@ -17,3 +21,4 @@
 # CDK asset staging directory
 .cdk.staging
 cdk.out
+

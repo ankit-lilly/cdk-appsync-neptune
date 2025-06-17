@@ -63,3 +63,22 @@ query Related {
 
 - It doesn't use transactions while inserting data into Neptune DB. For instance, we create the Article and then create the tags and categories if the second or third step 
 fails the Article will still exist in database but it will not have any tags or categories associated with it.
+
+
+## Building And Deploying
+
+
+```sh
+make build
+```
+
+It should build lambda functions and create a binary named 'bootstrap' inside each lambda function directory and then put it in a zip file `function.zip`
+
+And then deploy the CDK stack:
+
+
+```
+npx aws-cdk deploy --profile <your-aws-profile>
+```
+
+Note: if it doesn't work then you may need to specify AccountId inside Env inside aws.CdkProps

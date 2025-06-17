@@ -1,4 +1,4 @@
-iLAMBDA_DIRS := $(wildcard lambdas/*)
+LAMBDA_DIRS := $(wildcard lambdas/*)
 
 .PHONY: build
 
