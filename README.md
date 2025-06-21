@@ -57,9 +57,9 @@ query Related {
 
 ## TODO and Limitations:
 
-- There's no authenitcation or authorization in place. This is just a sample API to explore the capabilities of AWS AppSync and Neptune DB.
+- There's no authorization in place. The authentication works via   AppSync api key.
 
-- There's no UI so the graphl queries have to be run via AppSync console. 
+- There's no UI so the graphl queries have to be run via AppSync console or any client that supports graphql ( like Bruno or  postman or just plain old curl  post request)
 
 - It doesn't use transactions while inserting data into Neptune DB. For instance, we create the Article and then create the tags and categories if the second or third step 
 fails the Article will still exist in database but it will not have any tags or categories associated with it.
