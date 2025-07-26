@@ -8,6 +8,7 @@
 function.zip
 
 *bootstrap
+neo4j
 
 # Test binary, built with `go test -c`
 *.test
@@ -22,3 +23,4 @@ function.zip
 .cdk.staging
 cdk.out
 
+sample.json

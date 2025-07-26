@@ -1,5 +1,5 @@
 {
-  "app": "go mod download && go run stack.go",
+  "app": "go mod download && go run main.go",
   "watch": {
     "include": [
       "**"
@@ -18,6 +18,26 @@
     "@aws-cdk/core:target-partitions": [
       "aws",
       "aws-cn"
+    ],
+    "tags": [
+      {
+        "key": "environment",
+        "value": "la"
+      },
+      {
+        "key": "database",
+        "value": "learning"
+      }
+    ],
+    "parameters": [
+      {
+        "key": "APP_ENV",
+        "value": "development"
+      },
+      {
+        "key": "Database",
+        "value": "learning"
+      }
     ],
     "@aws-cdk-containers/ecs-service-extensions:enableDefaultLogDriver": true,
     "@aws-cdk/aws-ec2:uniqueImdsv2TemplateName": true,

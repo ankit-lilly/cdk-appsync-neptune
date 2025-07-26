@@ -8,3 +8,11 @@ build:
 		$(MAKE) -C $$dir build; \
 	done
 
+
+.PHONY: fmt
+
+fmt:
+	@for dir in $(LAMBDA_DIRS); do \
+		echo "Formatting $$dir..."; \
+		$(MAKE) -C $$dir fmt; \
+	done

@@ -1,28 +1,152 @@
-type Article {
+"""
+A clinical study, the top-level container for all study-related information.
+"""
+type Study {
   id: ID!
-  title: String!
+  name: String
   description: String
-  body: String
-  link: String!
-  publishedAt: AWSDateTime
-  tags: [String!]
-  categories: [String!]
+  label: String
+  versions: [StudyVersion!]
+  organizations(role: String): [Organization!]
+  documentedBy: [StudyDefinitionDocument!]
 }
 
+"""
+A specific version of a clinical study protocol.
+"""
+type StudyVersion {
+  id: ID!
+  versionIdentifier: String!
+  rationale: String
+  study: Study!
+  studyDesigns: [StudyDesign!]
+  amendments: [StudyAmendment!]
+  interventions: [StudyIntervention!]
+}
+
+"""
+Defines the overall design of the study, including its arms, epochs, and elements.
+"""
+type StudyDesign {
+  id: ID!
+  name: String
+  description: String
+  studyType: String
+  studyPhase: String
+  arms: [Arm!]
+  epochs: [Epoch!]
+  elements: [Element!]
+  studyCells: [StudyCell!]
+}
+
+"""
+A group of subjects in a clinical trial who receive a specific intervention.
+"""
+type Arm {
+  id: ID!
+  name: String
+  description: String
+  type: String
+  studyDesign: StudyDesign!
+}
+
+"""
+A period of time in a clinical trial during which subjects are in a consistent state.
+"""
+type Epoch {
+  id: ID!
+  name: String
+  description: String
+  type: String
+  studyDesign: StudyDesign!
+  precedes: Epoch
+  precededBy: Epoch
+}
+
+"""
+A component of the study design, often representing a specific treatment or assessment.
+"""
+type Element {
+    id: ID!
+    name: String
+    description: String
+}
+
+"""
+Represents the combination of an Arm and an Epoch.
+"""
+type StudyCell {
+    id: ID!
+    arm: Arm!
+    epoch: Epoch!
+    elements: [Element!]
+}
+
+"""
+An amendment to the study protocol.
+"""
+type StudyAmendment {
+  id: ID!
+  name: String
+  summary: String
+  rationale: String
+  version: StudyVersion!
+}
+
+"""
+An intervention being investigated in the study (e.g., a drug, device).
+"""
+type StudyIntervention {
+  id: ID!
+  name: String
+  description: String
+  role: String
+  type: String
+}
+
+"""
+An organization involved in the study (e.g., sponsor, CRO).
+"""
+type Organization {
+  id: ID!
+  name: String
+  type: String
+  legalAddress: String
+}
+
+"""
+A document that provides the definition of the study.
+"""
+type StudyDefinitionDocument {
+    id: ID!
+    name: String
+    type: String
+}
+
+
+# --- Query Entry Points ---
+
+"""
+Defines the entry points for querying the clinical study graph.
+"""
 type Query {
-  favorites(userId: ID!): [Article!]!
-  feed(limit: Int, offset: Int): [Article!]!
-  article(id: ID!): Article # Add a single article lookup
-  related(articleId: ID!, limit: Int = 10): [Article!]!
-  recommended(userId: ID!, limit: Int = 10): [Article!]!
-}
+  """
+  Fetches a single study by its unique ID.
+  """
+  study(id: ID!): Study
 
-type Mutation {
-  favorites(userId: ID!, articleId: ID!): Boolean
-}
+  """
+  Fetches all studies. Can be filtered.
+  """
+  studies(nameContains: String): [Study!]
 
-schema {
-  query: Query
-  mutation: Mutation
-}
+  """
+  Fetches a single study version by its unique ID.
+  """
+  studyVersion(id: ID!): StudyVersion
 
+  """
+  Fetches a single organization by its unique ID.
+  """
+  organization(id: ID!): Organization
+}

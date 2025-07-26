@@ -5,34 +5,12 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"slices"
 	"strings"
 
-	"github.com/aws/aws-lambda-go/lambda"
 	gremlingo "github.com/apache/tinkerpop/gremlin-go/v3/driver"
+	"github.com/aws/aws-lambda-go/lambda"
 )
-
-type GraphQLArticle struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Description *string   `json:"description,omitempty"`
-	Body        *string   `json:"body,omitempty"`
-	Link        string    `json:"link"`
-	PublishedAt *string   `json:"publishedAt,omitempty"`
-	Categories  []string  `json:"categories"`
-	Tags        []string  `json:"tags"`
-}
-
-type AppSyncEvent struct {
-	Info      AppSyncInfo           `json:"info"`
-	Arguments map[string]interface{} `json:"arguments"`
-	Source    map[string]interface{} `json:"source"`
-}
-
-type AppSyncInfo struct {
-	FieldName string `json:"fieldName"`
-	ParentTypeName  string `json:"parentTypeName"`
-	SelectionSetList []string `json:"selectionSetList"`
-}
 
 var (
 	writerGraphTraversalSource *gremlingo.GraphTraversalSource
@@ -40,6 +18,30 @@ var (
 	writerConn                 *gremlingo.DriverRemoteConnection
 	readerConn                 *gremlingo.DriverRemoteConnection
 )
+
+type GraphQLArticle struct {
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Description *string  `json:"description,omitempty"`
+	Body        *string  `json:"body,omitempty"`
+	Link        string   `json:"link"`
+	PublishedAt *string  `json:"publishedAt,omitempty"`
+	Categories  []string `json:"categories"`
+	Tags        []string `json:"tags"`
+}
+
+type AppSyncEvent struct {
+	Info      AppSyncInfo            `json:"info"`
+	Arguments map[string]interface{} `json:"arguments"`
+	Source    map[string]interface{} `json:"source"`
+}
+
+type AppSyncInfo struct {
+	FieldName        string   `json:"fieldName"`
+	ParentTypeName   string   `json:"parentTypeName"`
+	SelectionSetList []string `json:"selectionSetList"`
+}
+
 
 func init() {
 	neptuneWriterHostname := os.Getenv("NEPTUNE_ENDPOINT")
@@ -84,11 +86,10 @@ func mapGremlinValueMapToGraphQLArticle(result *gremlingo.Result) (*GraphQLArtic
 
 	article := &GraphQLArticle{}
 
-
 	getStringValue := func(key string) string {
 		if val, found := valMap[key]; found {
 			if vals, isSlice := val.([]interface{}); isSlice && len(vals) > 0 {
-				if str, isStr := vals[0].(string); isStr { 
+				if str, isStr := vals[0].(string); isStr {
 					return str
 				}
 			}
@@ -111,22 +112,21 @@ func mapGremlinValueMapToGraphQLArticle(result *gremlingo.Result) (*GraphQLArtic
 		if strID, isStr := idVal.(string); isStr {
 			article.ID = strID
 		} else {
-            log.Printf("Warning: T.Id is not a string for article: %T %v", idVal, idVal)
-        }
+			log.Printf("Warning: T.Id is not a string for article: %T %v", idVal, idVal)
+		}
 	}
-	article.ID = getStringValue("id") 
+	article.ID = getStringValue("id")
 	article.Link = getStringValue("link")
-	if article.ID == "" && article.Link != "" { 
+	if article.ID == "" && article.Link != "" {
 		article.ID = article.ID
 	}
-
 
 	article.Title = getStringValue("title")
 	article.Description = getOptionalStringValue("description")
 	article.Body = getOptionalStringValue("body")
 	article.PublishedAt = getOptionalStringValue("publishedAt")
 
-	articleLink := getStringValue("link") 
+	articleLink := getStringValue("link")
 	if articleLink == "" {
 		return nil, fmt.Errorf("article link property missing in valueMap result, cannot fetch edges")
 	}
@@ -180,25 +180,46 @@ func handleQueryFeed(args map[string]interface{}) ([]*GraphQLArticle, error) {
 	results, err := g.V().HasLabel("Article").
 		Order().By("publishedAt", gremlingo.Order.Desc).
 		Range(offset, offset+limit).
-		ValueMap(true). 
+		ValueMap(true).
 		ToList()
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch feed articles: %w", err)
 	}
 
-	articles := make([]*GraphQLArticle, 0, len(results)) 
+	articles := make([]*GraphQLArticle, 0, len(results))
 	for _, res := range results {
-		article, mapErr := mapGremlinValueMapToGraphQLArticle(res) 
+		article, mapErr := mapGremlinValueMapToGraphQLArticle(res)
 		if mapErr != nil {
 			log.Printf("Warning: Failed to map article valueMap result to GraphQLArticle: %v", mapErr)
 			continue
 		}
-		articles = append(articles, article) 
+		articles = append(articles, article)
 	}
 	return articles, nil
 }
 
+
+func buildArticleProjection(selectionSet []string)  *gremlingo.GraphTraversal {
+	projection := gremlingo.T__.Project("article").By(gremlingo.T__.ValueMap(true))
+
+	hasField := func(field string) bool {
+		if slices.Contains(selectionSet, field) {
+			return true
+		}
+		return false
+	}
+
+	if hasField("categories") {
+		projection = projection.By("categories", gremlingo.T__.Out("HAS_CATEGORY").Values("name"))
+	}
+
+	if hasField("tags") {
+		projection = projection.By("tags", gremlingo.T__.Out("HAS_TAG").Values("name"))
+	}
+
+	return projection
+}
 
 func handleQueryArticle(args map[string]interface{}) (*GraphQLArticle, error) {
 	g := readerGraphTraversalSource
@@ -222,7 +243,6 @@ func handleQueryArticle(args map[string]interface{}) (*GraphQLArticle, error) {
 	}
 	return article, nil
 }
-
 
 func handleQueryRelated(args map[string]interface{}) ([]*GraphQLArticle, error) {
 	g := readerGraphTraversalSource
@@ -264,7 +284,7 @@ func handleQueryRelated(args map[string]interface{}) ([]*GraphQLArticle, error) 
 }
 
 func handleQueryRecommended(args map[string]interface{}) ([]*GraphQLArticle, error) {
-	g := readerGraphTraversalSource 
+	g := readerGraphTraversalSource
 
 	userID, ok := args["userId"].(string)
 	if !ok || userID == "" {
@@ -320,13 +340,13 @@ func handler(ctx context.Context, event AppSyncEvent) (interface{}, error) {
 	switch event.Info.ParentTypeName {
 	case "Query":
 		switch event.Info.FieldName {
-		case "feed":
+		case "study":
 			return handleQueryFeed(event.Arguments)
-		case "article":
+		case "studies":
 			return handleQueryArticle(event.Arguments)
-		case "related":
+		case "studyVersion":
 			return handleQueryRelated(event.Arguments)
-		case "recommended":
+		case "organization":
 			return handleQueryRecommended(event.Arguments)
 		default:
 			return nil, fmt.Errorf("unknown query field: %s", event.Info.FieldName)
