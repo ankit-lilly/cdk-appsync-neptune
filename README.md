@@ -16,6 +16,7 @@ It exposes two APIs:
 3. The SDRProcessor Lambda function receives the message from the SQS quueue, parses the SDR data, and transforms it into a format suitable for storage in the 
 Neptune database.
 
+```shell
 +-----------------------+
 |   End User / Client   |
 +-----------+-----------+
@@ -58,6 +59,8 @@ v                                                                         v
 |                                (Graph Database)                                   |
 |                                                                                   |
 +-----------------------------------------------------------------------------------+
+
+```
 
 
 ## Building and Deploying
