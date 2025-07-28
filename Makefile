@@ -8,7 +8,6 @@ build:
 		$(MAKE) -C $$dir build; \
 	done
 
-
 .PHONY: fmt
 
 fmt:

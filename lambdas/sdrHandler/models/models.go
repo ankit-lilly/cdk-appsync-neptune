@@ -9,7 +9,7 @@ type CommentAnnotation struct {
 type StudyVersion struct {
 	ID                       string              `json:"id"`
 	VersionIdentifier        string              `json:"versionIdentifier"`
-	BusinessTherapeuticAreas []Code                `json:"businessTherapeuticAreas"`
+	BusinessTherapeuticAreas []Code              `json:"businessTherapeuticAreas"`
 	Rationale                string              `json:"rationale"`
 	Notes                    []CommentAnnotation `json:"notes"`
 	Abbreviations            []Abbreviation      `json:"abbreviations"`

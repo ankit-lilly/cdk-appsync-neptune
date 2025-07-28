@@ -32,5 +32,11 @@ func NewAppSyncApi( stack awscdk.Stack, vpc awsec2.Vpc, resolverFunc awslambda.I
 		})
 	}
 
+	ds.CreateResolver(jsii.String("DeleteStudyResolver"), &appsync.BaseResolverProps{
+		TypeName:  jsii.String("Mutation"),
+		FieldName: jsii.String("deleteStudy"),
+	})
+
+
 	return appSyncAPI
 }

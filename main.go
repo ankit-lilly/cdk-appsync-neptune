@@ -9,7 +9,7 @@ import (
 func main() {
 
 	const (
-		STACK_NAME = "SDRBackendStack"
+		STACK_NAME = "BigBeautifulStack"
 		APP_ID      = "sdrbackend"
 		ACCOUNT_ID = "073395114856"
 		REGION      = "us-west-1"

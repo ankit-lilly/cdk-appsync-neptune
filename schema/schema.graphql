@@ -7,7 +7,6 @@ type Study {
   description: String
   label: String
   versions: [StudyVersion!]
-  organizations(role: String): [Organization!]
   documentedBy: [StudyDefinitionDocument!]
 }
 
@@ -20,6 +19,7 @@ type StudyVersion {
   rationale: String
   study: Study!
   studyDesigns: [StudyDesign!]
+  organizations(role: String): [Organization!]
   amendments: [StudyAmendment!]
   interventions: [StudyIntervention!]
 }
@@ -111,7 +111,28 @@ type Organization {
   id: ID!
   name: String
   type: String
-  legalAddress: String
+  legalAddress: LegalAddress
+}
+
+type LegalAddress {
+  id: ID!
+  extensionAttributes: [String!]
+  text: String
+  lines: [String!]
+  city: String
+  district: String
+  state: String
+  postalCode: String
+  country: Country
+}
+
+type Country {
+  id: ID!
+  code: String!
+  codeSystem: String!
+  codeSystemVersion: String
+  decode: String!
+  instanceType: String
 }
 
 """
@@ -149,4 +170,12 @@ type Query {
   Fetches a single organization by its unique ID.
   """
   organization(id: ID!): Organization
+}
+
+type Mutation {
+  """
+  Deletes a study and all its associated data (versions, designs, etc.).
+  Returns true if the deletion was successful.
+  """
+  deleteStudy(id: ID!): Boolean
 }

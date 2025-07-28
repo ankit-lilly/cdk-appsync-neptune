@@ -13,17 +13,14 @@ type AppSyncInfo struct {
 }
 
 type Study struct {
-	ID          string                     `json:"id"`
-	Name        *string                    `json:"name,omitempty"`
-	Description *string                    `json:"description,omitempty"`
-	Label       *string                    `json:"label,omitempty"`
-	Versions    []*StudyVersion            `json:"versions,omitempty"`
-	Organizations []*Organization          `json:"organizations,omitempty"`
+	ID           string                     `json:"id"`
+	Name         *string                    `json:"name,omitempty"`
+	Description  *string                    `json:"description,omitempty"`
+	Label        *string                    `json:"label,omitempty"`
+	Versions     []*StudyVersion            `json:"versions,omitempty"`
 	DocumentedBy []*StudyDefinitionDocument `json:"documentedBy,omitempty"`
 }
 
-// StudyVersion corresponds to the GraphQL type:
-// A specific version of a clinical study protocol.
 type StudyVersion struct {
 	ID                string               `json:"id"`
 	VersionIdentifier string               `json:"versionIdentifier"`
@@ -32,24 +29,29 @@ type StudyVersion struct {
 	StudyDesigns      []*StudyDesign       `json:"studyDesigns,omitempty"`
 	Amendments        []*StudyAmendment    `json:"amendments,omitempty"`
 	Interventions     []*StudyIntervention `json:"interventions,omitempty"`
+	Organizations     []*Organization      `json:"organizations,omitempty"`
 }
 
-// StudyDesign corresponds to the GraphQL type:
-// Defines the overall design of the study, including its arms, epochs, and elements.
 type StudyDesign struct {
 	ID          string       `json:"id"`
 	Name        *string      `json:"name,omitempty"`
 	Description *string      `json:"description,omitempty"`
-	StudyType   *string      `json:"studyType,omitempty"`
-	StudyPhase  *string      `json:"studyPhase,omitempty"`
+	StudyType   *StudyType   `json:"studyType,omitempty"`
 	Arms        []*Arm       `json:"arms,omitempty"`
 	Epochs      []*Epoch     `json:"epochs,omitempty"`
 	Elements    []*Element   `json:"elements,omitempty"`
 	StudyCells  []*StudyCell `json:"studyCells,omitempty"`
 }
 
-// Arm corresponds to the GraphQL type:
-// A group of subjects in a clinical trial who receive a specific intervention.
+type StudyType struct {
+	ID                string `json:"id"`
+	Code              string `json:"code"`
+	CodeSystem        string `json:"codeSystem"`
+	CodeSystemVersion string `json:"codeSystemVersion"`
+	Decode            string `json:"decode"`
+	InstanceType      string `json:"instanceType"`
+}
+
 type Arm struct {
 	ID          string       `json:"id"`
 	Name        *string      `json:"name,omitempty"`
@@ -58,8 +60,6 @@ type Arm struct {
 	StudyDesign *StudyDesign `json:"studyDesign,omitempty"`
 }
 
-// Epoch corresponds to the GraphQL type:
-// A period of time in a clinical trial during which subjects are in a consistent state.
 type Epoch struct {
 	ID          string       `json:"id"`
 	Name        *string      `json:"name,omitempty"`
@@ -70,16 +70,12 @@ type Epoch struct {
 	PrecededBy  *Epoch       `json:"precededBy,omitempty"`
 }
 
-// Element corresponds to the GraphQL type:
-// A component of the study design, often representing a specific treatment or assessment.
 type Element struct {
 	ID          string  `json:"id"`
 	Name        *string `json:"name,omitempty"`
 	Description *string `json:"description,omitempty"`
 }
 
-// StudyCell corresponds to the GraphQL type:
-// Represents the combination of an Arm and an Epoch.
 type StudyCell struct {
 	ID       string     `json:"id"`
 	Arm      *Arm       `json:"arm,omitempty"`
@@ -87,8 +83,6 @@ type StudyCell struct {
 	Elements []*Element `json:"elements,omitempty"`
 }
 
-// StudyAmendment corresponds to the GraphQL type:
-// An amendment to the study protocol.
 type StudyAmendment struct {
 	ID        string        `json:"id"`
 	Name      *string       `json:"name,omitempty"`
@@ -97,8 +91,6 @@ type StudyAmendment struct {
 	Version   *StudyVersion `json:"version,omitempty"`
 }
 
-// StudyIntervention corresponds to the GraphQL type:
-// An intervention being investigated in the study (e.g., a drug, device).
 type StudyIntervention struct {
 	ID          string  `json:"id"`
 	Name        *string `json:"name,omitempty"`
@@ -107,20 +99,46 @@ type StudyIntervention struct {
 	Type        *string `json:"type,omitempty"`
 }
 
-// Organization corresponds to the GraphQL type:
-// An organization involved in the study (e.g., sponsor, CRO).
-type Organization struct {
-	ID           string  `json:"id"`
-	Name         *string `json:"name,omitempty"`
-	Type         *string `json:"type,omitempty"`
-	LegalAddress *string `json:"legalAddress,omitempty"`
+type OrgType struct {
+	ID                string `json:"id"`
+	Code              string `json:"code"`
+	CodeSystem        string `json:"codeSystem"`
+	CodeSystemVersion string `json:"codeSystemVersion"`
+	Decode            string `json:"decode"`
+	InstanceType      string `json:"instanceType"`
 }
 
-// StudyDefinitionDocument corresponds to the GraphQL type:
-// A document that provides the definition of the study.
+type Organization struct {
+	ID           string        `json:"id"`
+	Name         *string       `json:"name,omitempty"`
+	Type         *OrgType      `json:"type,omitempty"`
+	LegalAddress *LegalAddress `json:"legalAddress,omitempty"`
+}
+
+type Country struct {
+	ID                string `json:"id"`
+	Code              string `json:"code"`
+	CodeSystem        string `json:"codeSystem"`
+	CodeSystemVersion string `json:"codeSystemVersion"`
+	Decode            string `json:"decode"`
+	InstanceType      string `json:"instanceType"`
+}
+
+type LegalAddress struct {
+	ID                  string   `json:"id"`
+	ExtensionAttributes []string `json:"extensionAttributes,omitempty"`
+	Text                string   `json:"text"`
+	Lines               []string `json:"lines,omitempty"`
+	City                string   `json:"city,omitempty"`
+	District            string   `json:"district,omitempty"`
+	State               string   `json:"state,omitempty"`
+	PostalCode          string   `json:"postalCode,omitempty"`
+	Country             *Country `json:"country,omitempty"`
+	InstanceType        string   `json:"instanceType"`
+}
+
 type StudyDefinitionDocument struct {
 	ID   string  `json:"id"`
 	Name *string `json:"name,omitempty"`
 	Type *string `json:"type,omitempty"`
 }
-
