@@ -2,20 +2,13 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"github.com/ankit-lilly/dtd-go-backend/pkg/models"
 	"log"
 
-	"os"
-	"strings"
+	"github.com/ankit-lilly/dtd-go-backend/lambdas/resolver/mutations"
+	"github.com/ankit-lilly/dtd-go-backend/lambdas/resolver/query"
 
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-)
-
-var (
-	driver neo4j.DriverWithContext
 )
 
 type AppSyncEvent struct {
@@ -30,311 +23,6 @@ type AppSyncInfo struct {
 	SelectionSetList []string `json:"selectionSetList"`
 }
 
-func init() {
-	neptuneEndpoint := os.Getenv("NEPTUNE_ENDPOINT")
-	uri := fmt.Sprintf("bolt+s://%s:8182", neptuneEndpoint)
-
-	if neptuneEndpoint == "" {
-		log.Fatal("NEPTUNE_ENDPOINT environment variable must be set.")
-	}
-
-	var err error
-	driver, err = neo4j.NewDriverWithContext(uri, neo4j.NoAuth())
-	if err != nil {
-		log.Fatalf("Failed to establish Neo4j driver connection: %v", err)
-	}
-	log.Println("Neptune openCypher connection established in Lambda init().")
-}
-
-func executeReadQuery(ctx context.Context, query string, params map[string]interface{}) ([]*neo4j.Record, error) {
-	session := driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
-	defer session.Close(ctx)
-
-	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
-		log.Printf("Executing Query: %s\nWith Params: %+v", query, params)
-		res, err := tx.Run(ctx, query, params)
-		if err != nil {
-			return nil, err
-		}
-		return res.Collect(ctx)
-	})
-	if err != nil {
-		return nil, err
-	}
-	return result.([]*neo4j.Record), nil
-}
-
-func executeWriteQuery(ctx context.Context, query string, params map[string]interface{}) error {
-	session := driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
-	defer session.Close(ctx)
-
-	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
-		log.Printf("Executing Write Query: %s\nWith Params: %+v", query, params)
-		res, err := tx.Run(ctx, query, params)
-		if err != nil {
-			return nil, err
-		}
-		return res.Consume(ctx)
-	})
-	return err
-}
-
-func hasField(field string, selectionSet []string) bool {
-	for _, s := range selectionSet {
-		if strings.HasPrefix(s, field) {
-			return true
-		}
-	}
-	return false
-}
-
-func handleMutationDeleteStudy(ctx context.Context, args map[string]interface{}) (bool, error) {
-	studyID, ok := args["id"].(string)
-	if !ok || studyID == "" {
-		return false, fmt.Errorf("study ID is required for deletion")
-	}
-
-	query := `
-	MATCH (s:Study {id: $id})
-	OPTIONAL MATCH (s)-[*]->(descendant)
-	DETACH DELETE s, descendant
-	`
-	params := map[string]interface{}{"id": studyID}
-
-	err := executeWriteQuery(ctx, query, params)
-	if err != nil {
-		log.Printf("Error deleting study %s: %v", studyID, err)
-		return false, err
-	}
-
-	log.Printf("Successfully deleted study %s and its descendants", studyID)
-	return true, nil
-}
-
-func handleQueryActivities(ctx context.Context, args map[string]interface{}, selectionSet []string) ([]*models.Activity, error) {
-
-	// Corrected query to get each activity with its procedures
-	finalQuery := `
-		MATCH (a:Activity)
-		OPTIONAL MATCH (a)-[:HAS_DEFINED_PROCEDURE]->(p:DefinedProcedure)
-		WITH a, collect(p) AS procedures
-		RETURN a {
-			.id,
-			.name,
-			.label,
-			.description,
-			definedProcedures: procedures
-		} AS activity`
-
-	records, err := executeReadQuery(ctx, finalQuery, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute query for activities: %w", err)
-	}
-
-	var activities []*models.Activity
-
-	for _, record := range records {
-		activityData, ok := record.Get("activity")
-		if !ok {
-			log.Println("Warning: found a record without an 'activity' field")
-			continue
-		}
-		log.Printf("Processing activity data: %v", activityData)
-
-		var activity models.Activity
-		jsonBytes, err := json.Marshal(activityData)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal activity data: %w", err)
-		}
-		if err := json.Unmarshal(jsonBytes, &activity); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal activity data into struct: %w", err)
-		}
-		activities = append(activities, &activity)
-	}
-
-	return activities, nil
-}
-
-func handleQueryEncounters(ctx context.Context, args map[string]interface{}, selectionSet []string) ([]*models.Encounter, error) {
-
-	finalQuery := `
-		MATCH (e:Encounter)
-		OPTIONAL MATCH (e)-[:HAS_ENCOUNTER_TYPE]->(p:EncounterType)
-		WITH e, collect(p) AS encounterTypes
-		RETURN e {
-			.id,
-			.name,
-			.label,
-			.description,
-			type: encounterTypes
-		} AS encounter`
-	records, err := executeReadQuery(ctx, finalQuery, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute query for encounters: %w", err)
-	}
-	log.Println("Query for encounters executed successfully.", records)
-	var encounters []*models.Encounter
-	for _, record := range records {
-		encounterData, ok := record.Get("encounter")
-		if !ok {
-			log.Println("Warning: found a record without an 'encounter' field")
-			continue
-		}
-
-		log.Printf("Processing encounter data: %v", encounterData)
-		var encounter models.Encounter
-		jsonBytes, err := json.Marshal(encounterData)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal encounter data: %w", err)
-		}
-		if err := json.Unmarshal(jsonBytes, &encounter); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal encounter data into struct: %w", err)
-		}
-		encounters = append(encounters, &encounter)
-	}
-	return encounters, nil
-}
-
-func handleQueryStudy(ctx context.Context, args map[string]interface{}, selectionSet []string) (*models.Study, error) {
-	studyID, ok := args["id"].(string)
-	if !ok || studyID == "" {
-		return nil, fmt.Errorf("study ID is required")
-	}
-
-	var projectionParts []string
-
-	// Dynamically build projection for top-level Study fields
-	if hasField("id", selectionSet) {
-		projectionParts = append(projectionParts, ".id")
-	}
-	if hasField("name", selectionSet) {
-		projectionParts = append(projectionParts, ".name")
-	}
-	if hasField("description", selectionSet) {
-		projectionParts = append(projectionParts, ".description")
-	}
-	if hasField("label", selectionSet) {
-		projectionParts = append(projectionParts, ".label")
-	}
-
-	// Logic for 'versions' and its nested fields
-	if hasField("versions", selectionSet) {
-		var versionSubProjection []string
-		if hasField("versions/id", selectionSet) {
-			versionSubProjection = append(versionSubProjection, ".id")
-		}
-		if hasField("versions/rationale", selectionSet) {
-			versionSubProjection = append(versionSubProjection, ".rationale")
-		}
-
-		if hasField("versions/studyDesigns", selectionSet) {
-			var designSubProjection []string
-			if hasField("versions/studyDesigns/id", selectionSet) {
-				designSubProjection = append(designSubProjection, ".id")
-			}
-			if hasField("versions/studyDesigns/name", selectionSet) {
-				designSubProjection = append(designSubProjection, ".name")
-			}
-
-			if hasField("versions/studyDesigns/arms", selectionSet) {
-				armsProjection := "arms: [(d)-[:HAS_ARM]->(a:Arm) | a { .id, .name, .description, .type }]"
-				designSubProjection = append(designSubProjection, armsProjection)
-			}
-
-			if hasField("versions/studyDesigns/encounters", selectionSet) {
-				encountersProjection := "encounters: [(d)-[:HAS_ENCOUNTER]->(e:Encounter) | e { .id, .name, .label, .description }]"
-				designSubProjection = append(designSubProjection, encountersProjection)
-			}
-
-			if hasField("versions/studyDesigns/activities", selectionSet) {
-				activitiesProjection := "activities: [(d)-[:HAS_ACTIVITY]->(a:Activity) | a { .id, .name, .label, .description }]"
-				designSubProjection = append(designSubProjection, activitiesProjection)
-			}
-
-			if hasField("versions/studyDesigns/epochs", selectionSet) {
-				epochsProjection := "epochs: [(d)-[:HAS_EPOCH]->(e:Epoch) | e { .id, .name, .description }]"
-				designSubProjection = append(designSubProjection, epochsProjection)
-			}
-
-			if len(designSubProjection) > 0 {
-				designsProjection := fmt.Sprintf("studyDesigns: [(v)-[:INCLUDES_DESIGN]->(d:StudyDesign) | d { %s }]", strings.Join(designSubProjection, ", "))
-				versionSubProjection = append(versionSubProjection, designsProjection)
-			}
-		}
-
-		if hasField("versions/organizations", selectionSet) {
-			var orgSubProjection []string
-			if hasField("versions/organizations/id", selectionSet) {
-				orgSubProjection = append(orgSubProjection, ".id")
-			}
-			if hasField("versions/organizations/name", selectionSet) {
-				orgSubProjection = append(orgSubProjection, ".name")
-			}
-
-			if hasField("versions/organizations/legalAddress", selectionSet) {
-				legalAddressProjection := `legalAddress: head([(o)-[:HAS_LEGAL_ADDRESS]->(la:LegalAddress) | la { .*, country: head([(la)-[:LOCATED_IN]->(c:Country) | c {.*}]) }])`
-				orgSubProjection = append(orgSubProjection, legalAddressProjection)
-			}
-
-			orgsProjection := fmt.Sprintf("organizations: [(v)-[:HAS_ORGANIZATION]->(o:Organization) | o { %s }]", strings.Join(orgSubProjection, ", "))
-			versionSubProjection = append(versionSubProjection, orgsProjection)
-		}
-
-		if hasField("versions/amendments", selectionSet) {
-			amendmentsProjection := "amendments: [(v)-[:HAS_AMENDMENT]->(am:StudyAmendment) | am { .id, .name, .summary, .rationale }]"
-			versionSubProjection = append(versionSubProjection, amendmentsProjection)
-		}
-
-		if len(versionSubProjection) > 0 {
-			versionsProjection := fmt.Sprintf("versions: [(s)-[:HAS_VERSION]->(v:StudyVersion) | v { %s }]", strings.Join(versionSubProjection, ", "))
-			projectionParts = append(projectionParts, versionsProjection)
-		}
-	}
-
-	if hasField("documentedBy", selectionSet) {
-		// This projects only the fields that are actually being saved in the ingestion step.
-		docsProjection := "documentedBy: [(s)-[:DOCUMENTED_BY]->(d:StudyDefinitionDocument) | d { .id, .name }]"
-		projectionParts = append(projectionParts, docsProjection)
-	}
-
-	if len(projectionParts) == 0 {
-		projectionParts = append(projectionParts, ".id") // Default projection
-	}
-
-	finalQuery := fmt.Sprintf(
-		"MATCH (s:Study {id: $id}) RETURN s { %s } AS study",
-		strings.Join(projectionParts, ", "),
-	)
-
-	// --- The rest of the function remains the same ---
-	params := map[string]interface{}{"id": studyID}
-	records, err := executeReadQuery(ctx, finalQuery, params)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute query for study %s: %w", studyID, err)
-	}
-
-	if len(records) == 0 {
-		return nil, nil // Not found
-	}
-
-	record := records[0]
-	studyData, ok := record.Get("study")
-	if !ok {
-		return nil, fmt.Errorf("could not find 'study' in result record")
-	}
-
-	var study models.Study
-	jsonBytes, err := json.Marshal(studyData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal study data: %w", err)
-	}
-	if err := json.Unmarshal(jsonBytes, &study); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal study data into struct: %w", err)
-	}
-
-	return &study, nil
-}
-
 func handler(ctx context.Context, event AppSyncEvent) (interface{}, error) {
 	log.Printf("Received AppSync event: TypeName=%s, FieldName=%s", event.Info.ParentTypeName, event.Info.FieldName)
 
@@ -342,18 +30,18 @@ func handler(ctx context.Context, event AppSyncEvent) (interface{}, error) {
 	case "Query":
 		switch event.Info.FieldName {
 		case "study":
-			return handleQueryStudy(ctx, event.Arguments, event.Info.SelectionSetList)
+			return query.HandleQueryStudy(ctx, event.Arguments, event.Info.SelectionSetList)
 		case "activities":
-			return handleQueryActivities(ctx, event.Arguments, event.Info.SelectionSetList)
+			return query.HandleQueryActivities(ctx, event.Arguments, event.Info.SelectionSetList)
 		case "encounters":
-			return handleQueryEncounters(ctx, event.Arguments, event.Info.SelectionSetList)
+			return query.HandleQueryEncounters(ctx, event.Arguments, event.Info.SelectionSetList)
 		default:
 			return nil, fmt.Errorf("unknown query field: %s", event.Info.FieldName)
 		}
 	case "Mutation":
 		switch event.Info.FieldName {
 		case "deleteStudy":
-			return handleMutationDeleteStudy(ctx, event.Arguments)
+			return mutations.HandleMutationDeleteStudy(ctx, event.Arguments)
 		default:
 			return nil, fmt.Errorf("unknown mutation field: %s", event.Info.FieldName)
 		}
