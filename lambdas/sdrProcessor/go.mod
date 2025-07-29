@@ -1,4 +1,4 @@
-module github.com/ankit-lilly/dtd-go-backend/lambdas/resolver
+module github.com/ankit-lilly/dtd-go-backend/lambdas/sdrProcessor
 
 go 1.24.5
 

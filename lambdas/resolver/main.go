@@ -2,344 +2,363 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"github.com/ankit-lilly/dtd-go-backend/pkg/models"
 	"log"
+
 	"os"
 	"strings"
 
 	"github.com/aws/aws-lambda-go/lambda"
-	gremlingo "github.com/apache/tinkerpop/gremlin-go/v3/driver"
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
-type GraphQLArticle struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Description *string   `json:"description,omitempty"`
-	Body        *string   `json:"body,omitempty"`
-	Link        string    `json:"link"`
-	PublishedAt *string   `json:"publishedAt,omitempty"`
-	Categories  []string  `json:"categories"`
-	Tags        []string  `json:"tags"`
-}
+var (
+	driver neo4j.DriverWithContext
+)
 
 type AppSyncEvent struct {
-	Info      AppSyncInfo           `json:"info"`
+	Info      AppSyncInfo            `json:"info"`
 	Arguments map[string]interface{} `json:"arguments"`
 	Source    map[string]interface{} `json:"source"`
 }
 
 type AppSyncInfo struct {
-	FieldName string `json:"fieldName"`
-	ParentTypeName  string `json:"parentTypeName"`
+	FieldName        string   `json:"fieldName"`
+	ParentTypeName   string   `json:"parentTypeName"`
 	SelectionSetList []string `json:"selectionSetList"`
 }
 
-var (
-	writerGraphTraversalSource *gremlingo.GraphTraversalSource
-	readerGraphTraversalSource *gremlingo.GraphTraversalSource
-	writerConn                 *gremlingo.DriverRemoteConnection
-	readerConn                 *gremlingo.DriverRemoteConnection
-)
-
 func init() {
-	neptuneWriterHostname := os.Getenv("NEPTUNE_ENDPOINT")
-	neptuneReaderHostname := os.Getenv("NEPTUNE_READER_ENDPOINT")
-	neptunePort := os.Getenv("NEPTUNE_PORT")
+	neptuneEndpoint := os.Getenv("NEPTUNE_ENDPOINT")
+	uri := fmt.Sprintf("bolt+s://%s:8182", neptuneEndpoint)
 
-	if neptuneWriterHostname == "" || neptuneReaderHostname == "" || neptunePort == "" {
-		log.Fatal("NEPTUNE_ENDPOINT, NEPTUNE_READER_ENDPOINT, and NEPTUNE_PORT environment variables must be set.")
+	if neptuneEndpoint == "" {
+		log.Fatal("NEPTUNE_ENDPOINT environment variable must be set.")
 	}
-
-	writerConnStr := fmt.Sprintf("wss://%s:%s/gremlin", neptuneWriterHostname, neptunePort)
-	readerConnStr := fmt.Sprintf("wss://%s:%s/gremlin", neptuneReaderHostname, neptunePort)
-
-	log.Printf("DEBUG (Resolver Init): Constructed Writer Connection String: '%s'", writerConnStr)
-	log.Printf("DEBUG (Resolver Init): Constructed Reader Connection String: '%s'", readerConnStr)
 
 	var err error
-	writerConn, err = gremlingo.NewDriverRemoteConnection(writerConnStr)
+	driver, err = neo4j.NewDriverWithContext(uri, neo4j.NoAuth())
 	if err != nil {
-		log.Fatalf("ERROR (Resolver Init): Failed to create writer connection with string '%s': %v", writerConnStr, err)
+		log.Fatalf("Failed to establish Neo4j driver connection: %v", err)
 	}
-	writerGraphTraversalSource = gremlingo.Traversal_().WithRemote(writerConn)
-	log.Println("Neptune writer connection initialized.")
-
-	readerConn, err = gremlingo.NewDriverRemoteConnection(readerConnStr)
-	if err != nil {
-		log.Fatalf("ERROR (Resolver Init): Failed to create reader connection with string '%s': %v", readerConnStr, err)
-	}
-	readerGraphTraversalSource = gremlingo.Traversal_().WithRemote(readerConn)
-	log.Println("Neptune reader connection initialized.")
+	log.Println("Neptune openCypher connection established in Lambda init().")
 }
 
-func mapGremlinValueMapToGraphQLArticle(result *gremlingo.Result) (*GraphQLArticle, error) {
-	if result == nil {
-		return nil, fmt.Errorf("nil Gremlin valueMap result")
+func executeReadQuery(ctx context.Context, query string, params map[string]interface{}) ([]*neo4j.Record, error) {
+	session := driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
+	defer session.Close(ctx)
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		log.Printf("Executing Query: %s\nWith Params: %+v", query, params)
+		res, err := tx.Run(ctx, query, params)
+		if err != nil {
+			return nil, err
+		}
+		return res.Collect(ctx)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.([]*neo4j.Record), nil
+}
+
+func executeWriteQuery(ctx context.Context, query string, params map[string]interface{}) error {
+	session := driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close(ctx)
+
+	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		log.Printf("Executing Write Query: %s\nWith Params: %+v", query, params)
+		res, err := tx.Run(ctx, query, params)
+		if err != nil {
+			return nil, err
+		}
+		return res.Consume(ctx)
+	})
+	return err
+}
+
+func hasField(field string, selectionSet []string) bool {
+	for _, s := range selectionSet {
+		if strings.HasPrefix(s, field) {
+			return true
+		}
+	}
+	return false
+}
+
+func handleMutationDeleteStudy(ctx context.Context, args map[string]interface{}) (bool, error) {
+	studyID, ok := args["id"].(string)
+	if !ok || studyID == "" {
+		return false, fmt.Errorf("study ID is required for deletion")
 	}
 
-	valMap, ok := result.Data.(map[interface{}]interface{})
+	query := `
+	MATCH (s:Study {id: $id})
+	OPTIONAL MATCH (s)-[*]->(descendant)
+	DETACH DELETE s, descendant
+	`
+	params := map[string]interface{}{"id": studyID}
+
+	err := executeWriteQuery(ctx, query, params)
+	if err != nil {
+		log.Printf("Error deleting study %s: %v", studyID, err)
+		return false, err
+	}
+
+	log.Printf("Successfully deleted study %s and its descendants", studyID)
+	return true, nil
+}
+
+func handleQueryActivities(ctx context.Context, args map[string]interface{}, selectionSet []string) ([]*models.Activity, error) {
+
+	// Corrected query to get each activity with its procedures
+	finalQuery := `
+		MATCH (a:Activity)
+		OPTIONAL MATCH (a)-[:HAS_DEFINED_PROCEDURE]->(p:DefinedProcedure)
+		WITH a, collect(p) AS procedures
+		RETURN a {
+			.id,
+			.name,
+			.label,
+			.description,
+			definedProcedures: procedures
+		} AS activity`
+
+	records, err := executeReadQuery(ctx, finalQuery, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query for activities: %w", err)
+	}
+
+	var activities []*models.Activity
+
+	for _, record := range records {
+		activityData, ok := record.Get("activity")
+		if !ok {
+			log.Println("Warning: found a record without an 'activity' field")
+			continue
+		}
+		log.Printf("Processing activity data: %v", activityData)
+
+		var activity models.Activity
+		jsonBytes, err := json.Marshal(activityData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal activity data: %w", err)
+		}
+		if err := json.Unmarshal(jsonBytes, &activity); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal activity data into struct: %w", err)
+		}
+		activities = append(activities, &activity)
+	}
+
+	return activities, nil
+}
+
+func handleQueryEncounters(ctx context.Context, args map[string]interface{}, selectionSet []string) ([]*models.Encounter, error) {
+
+	finalQuery := `
+		MATCH (e:Encounter)
+		OPTIONAL MATCH (e)-[:HAS_ENCOUNTER_TYPE]->(p:EncounterType)
+		WITH e, collect(p) AS encounterTypes
+		RETURN e {
+			.id,
+			.name,
+			.label,
+			.description,
+			type: encounterTypes
+		} AS encounter`
+	records, err := executeReadQuery(ctx, finalQuery, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query for encounters: %w", err)
+	}
+	log.Println("Query for encounters executed successfully.", records)
+	var encounters []*models.Encounter
+	for _, record := range records {
+		encounterData, ok := record.Get("encounter")
+		if !ok {
+			log.Println("Warning: found a record without an 'encounter' field")
+			continue
+		}
+
+		log.Printf("Processing encounter data: %v", encounterData)
+		var encounter models.Encounter
+		jsonBytes, err := json.Marshal(encounterData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal encounter data: %w", err)
+		}
+		if err := json.Unmarshal(jsonBytes, &encounter); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal encounter data into struct: %w", err)
+		}
+		encounters = append(encounters, &encounter)
+	}
+	return encounters, nil
+}
+
+func handleQueryStudy(ctx context.Context, args map[string]interface{}, selectionSet []string) (*models.Study, error) {
+	studyID, ok := args["id"].(string)
+	if !ok || studyID == "" {
+		return nil, fmt.Errorf("study ID is required")
+	}
+
+	var projectionParts []string
+
+	// Dynamically build projection for top-level Study fields
+	if hasField("id", selectionSet) {
+		projectionParts = append(projectionParts, ".id")
+	}
+	if hasField("name", selectionSet) {
+		projectionParts = append(projectionParts, ".name")
+	}
+	if hasField("description", selectionSet) {
+		projectionParts = append(projectionParts, ".description")
+	}
+	if hasField("label", selectionSet) {
+		projectionParts = append(projectionParts, ".label")
+	}
+
+	// Logic for 'versions' and its nested fields
+	if hasField("versions", selectionSet) {
+		var versionSubProjection []string
+		if hasField("versions/id", selectionSet) {
+			versionSubProjection = append(versionSubProjection, ".id")
+		}
+		if hasField("versions/rationale", selectionSet) {
+			versionSubProjection = append(versionSubProjection, ".rationale")
+		}
+
+		if hasField("versions/studyDesigns", selectionSet) {
+			var designSubProjection []string
+			if hasField("versions/studyDesigns/id", selectionSet) {
+				designSubProjection = append(designSubProjection, ".id")
+			}
+			if hasField("versions/studyDesigns/name", selectionSet) {
+				designSubProjection = append(designSubProjection, ".name")
+			}
+
+			if hasField("versions/studyDesigns/arms", selectionSet) {
+				armsProjection := "arms: [(d)-[:HAS_ARM]->(a:Arm) | a { .id, .name, .description, .type }]"
+				designSubProjection = append(designSubProjection, armsProjection)
+			}
+
+			if hasField("versions/studyDesigns/encounters", selectionSet) {
+				encountersProjection := "encounters: [(d)-[:HAS_ENCOUNTER]->(e:Encounter) | e { .id, .name, .label, .description }]"
+				designSubProjection = append(designSubProjection, encountersProjection)
+			}
+
+			if hasField("versions/studyDesigns/activities", selectionSet) {
+				activitiesProjection := "activities: [(d)-[:HAS_ACTIVITY]->(a:Activity) | a { .id, .name, .label, .description }]"
+				designSubProjection = append(designSubProjection, activitiesProjection)
+			}
+
+			if hasField("versions/studyDesigns/epochs", selectionSet) {
+				epochsProjection := "epochs: [(d)-[:HAS_EPOCH]->(e:Epoch) | e { .id, .name, .description }]"
+				designSubProjection = append(designSubProjection, epochsProjection)
+			}
+
+			if len(designSubProjection) > 0 {
+				designsProjection := fmt.Sprintf("studyDesigns: [(v)-[:INCLUDES_DESIGN]->(d:StudyDesign) | d { %s }]", strings.Join(designSubProjection, ", "))
+				versionSubProjection = append(versionSubProjection, designsProjection)
+			}
+		}
+
+		if hasField("versions/organizations", selectionSet) {
+			var orgSubProjection []string
+			if hasField("versions/organizations/id", selectionSet) {
+				orgSubProjection = append(orgSubProjection, ".id")
+			}
+			if hasField("versions/organizations/name", selectionSet) {
+				orgSubProjection = append(orgSubProjection, ".name")
+			}
+
+			if hasField("versions/organizations/legalAddress", selectionSet) {
+				legalAddressProjection := `legalAddress: head([(o)-[:HAS_LEGAL_ADDRESS]->(la:LegalAddress) | la { .*, country: head([(la)-[:LOCATED_IN]->(c:Country) | c {.*}]) }])`
+				orgSubProjection = append(orgSubProjection, legalAddressProjection)
+			}
+
+			orgsProjection := fmt.Sprintf("organizations: [(v)-[:HAS_ORGANIZATION]->(o:Organization) | o { %s }]", strings.Join(orgSubProjection, ", "))
+			versionSubProjection = append(versionSubProjection, orgsProjection)
+		}
+
+		if hasField("versions/amendments", selectionSet) {
+			amendmentsProjection := "amendments: [(v)-[:HAS_AMENDMENT]->(am:StudyAmendment) | am { .id, .name, .summary, .rationale }]"
+			versionSubProjection = append(versionSubProjection, amendmentsProjection)
+		}
+
+		if len(versionSubProjection) > 0 {
+			versionsProjection := fmt.Sprintf("versions: [(s)-[:HAS_VERSION]->(v:StudyVersion) | v { %s }]", strings.Join(versionSubProjection, ", "))
+			projectionParts = append(projectionParts, versionsProjection)
+		}
+	}
+
+	if hasField("documentedBy", selectionSet) {
+		// This projects only the fields that are actually being saved in the ingestion step.
+		docsProjection := "documentedBy: [(s)-[:DOCUMENTED_BY]->(d:StudyDefinitionDocument) | d { .id, .name }]"
+		projectionParts = append(projectionParts, docsProjection)
+	}
+
+	if len(projectionParts) == 0 {
+		projectionParts = append(projectionParts, ".id") // Default projection
+	}
+
+	finalQuery := fmt.Sprintf(
+		"MATCH (s:Study {id: $id}) RETURN s { %s } AS study",
+		strings.Join(projectionParts, ", "),
+	)
+
+	// --- The rest of the function remains the same ---
+	params := map[string]interface{}{"id": studyID}
+	records, err := executeReadQuery(ctx, finalQuery, params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query for study %s: %w", studyID, err)
+	}
+
+	if len(records) == 0 {
+		return nil, nil // Not found
+	}
+
+	record := records[0]
+	studyData, ok := record.Get("study")
 	if !ok {
-		return nil, fmt.Errorf("failed to cast result.Data to map[interface{}]interface{} - got type %T", result.Data)
+		return nil, fmt.Errorf("could not find 'study' in result record")
 	}
 
-	article := &GraphQLArticle{}
-
-
-	getStringValue := func(key string) string {
-		if val, found := valMap[key]; found {
-			if vals, isSlice := val.([]interface{}); isSlice && len(vals) > 0 {
-				if str, isStr := vals[0].(string); isStr { 
-					return str
-				}
-			}
-		}
-		return ""
-	}
-
-	getOptionalStringValue := func(key string) *string {
-		if val, found := valMap[key]; found {
-			if vals, isSlice := val.([]interface{}); isSlice && len(vals) > 0 {
-				if str, isStr := vals[0].(string); isStr {
-					return &str
-				}
-			}
-		}
-		return nil
-	}
-
-	if idVal, ok := valMap[gremlingo.T.Id]; ok {
-		if strID, isStr := idVal.(string); isStr {
-			article.ID = strID
-		} else {
-            log.Printf("Warning: T.Id is not a string for article: %T %v", idVal, idVal)
-        }
-	}
-	article.ID = getStringValue("id") 
-	article.Link = getStringValue("link")
-	if article.ID == "" && article.Link != "" { 
-		article.ID = article.ID
-	}
-
-
-	article.Title = getStringValue("title")
-	article.Description = getOptionalStringValue("description")
-	article.Body = getOptionalStringValue("body")
-	article.PublishedAt = getOptionalStringValue("publishedAt")
-
-	articleLink := getStringValue("link") 
-	if articleLink == "" {
-		return nil, fmt.Errorf("article link property missing in valueMap result, cannot fetch edges")
-	}
-
-	categoriesRes, err := readerGraphTraversalSource.V().Has("Article", "link", articleLink).Out("HAS_CATEGORY").Values("name").ToList()
+	var study models.Study
+	jsonBytes, err := json.Marshal(studyData)
 	if err != nil {
-		log.Printf("Warning: Failed to fetch categories for article %s: %v", article.Link, err)
-		article.Categories = []string{}
-	} else {
-		fmt.Printf("DEBUG: Fetched %d categories for article %s\n", len(categoriesRes), categoriesRes)
-		cats := make([]string, len(categoriesRes))
-		for i, r := range categoriesRes {
-			cats[i] = r.GetString()
-		}
-		article.Categories = cats
+		return nil, fmt.Errorf("failed to marshal study data: %w", err)
+	}
+	if err := json.Unmarshal(jsonBytes, &study); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal study data into struct: %w", err)
 	}
 
-	keywordsRes, err := readerGraphTraversalSource.V().Has("Article", "link", articleLink).Out("HAS_TAG").Values("name").ToList()
-	if err != nil {
-		log.Printf("Warning: Failed to fetch tags (keywords) for article %s: %v", article.Link, err)
-		article.Tags = []string{}
-	} else {
-		fmt.Printf("DEBUG: Fetched %d tags for article %s\n", len(keywordsRes), keywordsRes)
-		kws := make([]string, len(keywordsRes))
-		for i, r := range keywordsRes {
-			kws[i] = r.GetString()
-		}
-		article.Tags = kws
-	}
-
-	return article, nil
-}
-
-func handleQueryFeed(args map[string]interface{}) ([]*GraphQLArticle, error) {
-	g := readerGraphTraversalSource
-
-	limit := int64(10)
-	if val, ok := args["limit"]; ok {
-		if floatVal, isFloat := val.(float64); isFloat {
-			limit = int64(floatVal)
-		}
-	}
-
-	offset := int64(0)
-	if val, ok := args["offset"]; ok {
-		if floatVal, isFloat := val.(float64); isFloat {
-			offset = int64(floatVal)
-		}
-	}
-
-	results, err := g.V().HasLabel("Article").
-		Order().By("publishedAt", gremlingo.Order.Desc).
-		Range(offset, offset+limit).
-		ValueMap(true). 
-		ToList()
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch feed articles: %w", err)
-	}
-
-	articles := make([]*GraphQLArticle, 0, len(results)) 
-	for _, res := range results {
-		article, mapErr := mapGremlinValueMapToGraphQLArticle(res) 
-		if mapErr != nil {
-			log.Printf("Warning: Failed to map article valueMap result to GraphQLArticle: %v", mapErr)
-			continue
-		}
-		articles = append(articles, article) 
-	}
-	return articles, nil
-}
-
-
-func handleQueryArticle(args map[string]interface{}) (*GraphQLArticle, error) {
-	g := readerGraphTraversalSource
-
-	articleID, ok := args["id"].(string)
-	if !ok || articleID == "" {
-		return nil, fmt.Errorf("article ID is required")
-	}
-
-	result, err := g.V().Has("Article", "link", articleID).ValueMap(true).Next()
-	if err != nil {
-		if strings.Contains(err.Error(), "No next value") {
-			return nil, nil // Article not found, return nil without error
-		}
-		return nil, fmt.Errorf("failed to fetch article %s: %w", articleID, err)
-	}
-
-	article, mapErr := mapGremlinValueMapToGraphQLArticle(result)
-	if mapErr != nil {
-		return nil, fmt.Errorf("failed to map article valueMap result to GraphQLArticle: %v", mapErr)
-	}
-	return article, nil
-}
-
-
-func handleQueryRelated(args map[string]interface{}) ([]*GraphQLArticle, error) {
-	g := readerGraphTraversalSource
-
-	articleID, ok := args["articleId"].(string)
-	if !ok || articleID == "" {
-		return nil, fmt.Errorf("articleId is required for related query")
-	}
-
-	limit := int64(10)
-	if val, ok := args["limit"]; ok {
-		if floatVal, isFloat := val.(float64); isFloat {
-			limit = int64(floatVal)
-		}
-	}
-
-	results, err := g.V().Has("Article", "link", articleID).As("originalArticle").
-		Out("HAS_CATEGORY", "HAS_TAG").As("sharedTopic").
-		In("HAS_CATEGORY", "HAS_TAG").
-		Dedup().
-		Limit(limit).
-		ValueMap(true).
-		ToList()
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch related articles for %s: %w", articleID, err)
-	}
-
-	articles := make([]*GraphQLArticle, 0, len(results))
-	for _, res := range results {
-		article, mapErr := mapGremlinValueMapToGraphQLArticle(res)
-		if mapErr != nil {
-			log.Printf("Warning: Failed to map related article valueMap result to GraphQLArticle: %v", mapErr)
-			continue
-		}
-		articles = append(articles, article)
-	}
-	return articles, nil
-}
-
-func handleQueryRecommended(args map[string]interface{}) ([]*GraphQLArticle, error) {
-	g := readerGraphTraversalSource 
-
-	userID, ok := args["userId"].(string)
-	if !ok || userID == "" {
-		return nil, fmt.Errorf("userId is required for recommended query")
-	}
-
-	limit := int64(10)
-	if val, ok := args["limit"]; ok {
-		if floatVal, isFloat := val.(float64); isFloat {
-			limit = int64(floatVal)
-		}
-	}
-
-	results, err := g.V().Has("User", "id", userID).
-		Out("FAVORITED").As("favoritedArticle").
-		Out("HAS_CATEGORY", "HAS_TAG").As("sharedTopic").
-		In("HAS_CATEGORY", "HAS_TAG").
-		Dedup().
-		Limit(limit).
-		ValueMap(true).
-		ToList()
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch recommended articles for user %s: %w", userID, err)
-	}
-
-	articles := make([]*GraphQLArticle, 0, len(results))
-	for _, res := range results {
-		article, mapErr := mapGremlinValueMapToGraphQLArticle(res)
-		if mapErr != nil {
-			log.Printf("Warning: Failed to map recommended article valueMap result to GraphQLArticle: %v", mapErr)
-			continue
-		}
-		articles = append(articles, article)
-	}
-	return articles, nil
-}
-
-func handleMutationFavorite(args map[string]interface{}) (bool, error) {
-	return false, fmt.Errorf("Mutation favorite not implemented yet")
+	return &study, nil
 }
 
 func handler(ctx context.Context, event AppSyncEvent) (interface{}, error) {
-	log.Printf("Received AppSync event: TypeName=%s, FieldName=%s, Arguments=%+v", event.Info.ParentTypeName, event.Info.FieldName, event.Arguments)
-
-	if writerGraphTraversalSource == nil || readerGraphTraversalSource == nil {
-		log.Print("Gremlin traversal sources not initialized. Attempting re-init.")
-		if writerGraphTraversalSource == nil || readerGraphTraversalSource == nil {
-			return nil, fmt.Errorf("Gremlin traversal sources failed to initialize.")
-		}
-	}
+	log.Printf("Received AppSync event: TypeName=%s, FieldName=%s", event.Info.ParentTypeName, event.Info.FieldName)
 
 	switch event.Info.ParentTypeName {
 	case "Query":
 		switch event.Info.FieldName {
-		case "feed":
-			return handleQueryFeed(event.Arguments)
-		case "article":
-			return handleQueryArticle(event.Arguments)
-		case "related":
-			return handleQueryRelated(event.Arguments)
-		case "recommended":
-			return handleQueryRecommended(event.Arguments)
+		case "study":
+			return handleQueryStudy(ctx, event.Arguments, event.Info.SelectionSetList)
+		case "activities":
+			return handleQueryActivities(ctx, event.Arguments, event.Info.SelectionSetList)
+		case "encounters":
+			return handleQueryEncounters(ctx, event.Arguments, event.Info.SelectionSetList)
 		default:
 			return nil, fmt.Errorf("unknown query field: %s", event.Info.FieldName)
 		}
 	case "Mutation":
 		switch event.Info.FieldName {
-		case "favorite":
-			return handleMutationFavorite(event.Arguments)
+		case "deleteStudy":
+			return handleMutationDeleteStudy(ctx, event.Arguments)
 		default:
 			return nil, fmt.Errorf("unknown mutation field: %s", event.Info.FieldName)
 		}
 	default:
-		return nil, fmt.Errorf("unknown AppSync type: %s", event.Info.ParentTypeName)
+		return nil, fmt.Errorf("unsupported type: %s", event.Info.ParentTypeName)
 	}
 }
 
