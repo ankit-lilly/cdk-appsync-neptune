@@ -94,7 +94,6 @@ func processStudy(ctx context.Context, study models.Study) error {
         arm.description = a.description
     MERGE (sd)-[:HAS_ARM]->(arm)
 
-    // Process Arm Type correctly
     WITH arm, a
     WHERE a.dataOriginType IS NOT NULL
     MERGE (dot:ArmDataOriginType {id: a.dataOriginType.id})
@@ -115,17 +114,17 @@ func processStudy(ctx context.Context, study models.Study) error {
     SET
         enc.name = a.name,
         enc.description = a.description,
-	enc.label = a.label,
-	enc.description = a.description,
-	enc.scheduledAtId = a.scheduledAtId
+				enc.label = a.label,
+				enc.description = a.description,
+				enc.scheduledAtId = a.scheduledAtId
     MERGE (sd)-[:HAS_ENCOUNTER]->(enc)
     MERGE (ect:EncounterType {id: a.type.id})
     SET
         ect.code = a.type.code,
-	ect.codeSystem = a.type.codeSystem,
-	ect.codeSystemVersion = a.type.codeSystemVersion,
-	ect.decode = a.type.decode,
-	ect.instanceType = a.type.instanceType
+				ect.codeSystem = a.type.codeSystem,
+				ect.codeSystemVersion = a.type.codeSystemVersion,
+				ect.decode = a.type.decode,
+				ect.instanceType = a.type.instanceType
     MERGE (enc)-[:HAS_ENCOUNTER_TYPE]->(ect)
     `
 
