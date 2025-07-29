@@ -4,17 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/ankit-lilly/dtd-go-backend/pkg/models"
 	"log"
-	"os"
+
+	"github.com/ankit-lilly/dtd-go-backend/internal/neptunedb"
+	"github.com/ankit-lilly/dtd-go-backend/pkg/models"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-)
-
-var (
-	driver neo4j.DriverWithContext
 )
 
 type UsdmPayload struct {
@@ -22,21 +19,6 @@ type UsdmPayload struct {
 	UsdmVersion   string       `json:"usdmVersion"`
 	SystemName    string       `json:"systemName"`
 	SystemVersion string       `json:"systemVersion"`
-}
-
-func init() {
-	neptuneEndpoint := os.Getenv("NEPTUNE_ENDPOINT")
-	if neptuneEndpoint == "" {
-		log.Fatal("NEPTUNE_ENDPOINT environment variable must be set.")
-	}
-	uri := fmt.Sprintf("bolt+s://%s:8182", neptuneEndpoint)
-
-	var err error
-	driver, err = neo4j.NewDriverWithContext(uri, neo4j.NoAuth())
-	if err != nil {
-		log.Fatalf("Failed to establish Neo4j driver connection: %v", err)
-	}
-	log.Println("Neptune openCypher connection established in Lambda init().")
 }
 
 func parseStudyData(data string) (models.Study, error) {
@@ -261,6 +243,7 @@ func processStudy(ctx context.Context, study models.Study) error {
         c.instanceType = o.legalAddress.country.instanceType
     MERGE (la)-[:LOCATED_IN]->(c)`
 
+	driver := neptunedb.GetDriver()
 	session := driver.NewSession(ctx, neo4j.SessionConfig{})
 	defer session.Close(ctx)
 
