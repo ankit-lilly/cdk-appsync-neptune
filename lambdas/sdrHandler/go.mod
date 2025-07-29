@@ -1,8 +1,9 @@
-module sdrHandler
+module github.com/ankit-lilly/dtd-go-backend/lambdas/sdrHandler
 
 go 1.24.5
 
 require (
+	github.com/ankit-lilly/dtd-go-backend v0.0.0-00010101000000-000000000000
 	github.com/aws/aws-lambda-go v1.49.0
 	github.com/aws/aws-sdk-go-v2/config v1.29.17
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.38.8
@@ -22,3 +23,5 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.34.0 // indirect
 	github.com/aws/smithy-go v1.22.4 // indirect
 )
+
+replace github.com/ankit-lilly/dtd-go-backend => ../..

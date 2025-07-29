@@ -1,7 +1,7 @@
 package main
 
 import (
-	"neptuneapp/stack"
+	"github.com/ankit-lilly/dtd-go-backend/stack"
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/jsii-runtime-go"
 )

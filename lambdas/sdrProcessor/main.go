@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/ankit-lilly/dtd-go-backend/pkg/models"
 	"log"
 	"os"
-	"sdrProcessor/models"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -67,6 +67,7 @@ func handler(ctx context.Context, event events.SQSEvent) error {
 }
 
 func processStudy(ctx context.Context, study models.Study) error {
+
 	var studyMap map[string]interface{}
 	studyJSON, _ := json.Marshal(study)
 	json.Unmarshal(studyJSON, &studyMap)
@@ -75,37 +76,26 @@ func processStudy(ctx context.Context, study models.Study) error {
 		"study": studyMap,
 	}
 
-	// --- ALL QUERIES BELOW SHOULD REPLACE THE EXISTING ONES ---
-
 	qStudyAndVersions := `
     MERGE (s:Study {id: $study.id})
-    ON CREATE SET
+    SET
         s.name = $study.name,
         s.description = $study.description,
         s.label = $study.label
-    ON MATCH SET
-        s.name = $study.name,
-        s.description = $study.description,
-        s.label = $study.label
-
-    WITH s, $study.versions AS versions
-    UNWIND versions AS v
+    WITH s
+    UNWIND $study.versions AS v
     MERGE (sv:StudyVersion {id: v.id})
-    ON CREATE SET
+    SET
         sv.versionIdentifier = v.versionIdentifier,
         sv.rationale = v.rationale
     MERGE (s)-[:HAS_VERSION]->(sv)`
 
 	qDesigns := `
     UNWIND $study.versions AS v
-    UNWIND v.studyDesigns AS d
     MATCH (sv:StudyVersion {id: v.id})
+    UNWIND v.studyDesigns AS d
     MERGE (sd:StudyDesign {id: d.id})
-    ON CREATE SET
-        sd.name = d.name,
-        sd.description = d.description,
-        sd.studyType  = d.studyType.decode
-    ON MATCH SET
+    SET
         sd.name = d.name,
         sd.description = d.description,
         sd.studyType  = d.studyType.decode
@@ -114,29 +104,90 @@ func processStudy(ctx context.Context, study models.Study) error {
 	qArms := `
     UNWIND $study.versions AS v
     UNWIND v.studyDesigns AS d
-    UNWIND d.arms AS a
     MATCH (sd:StudyDesign {id: d.id})
+    UNWIND d.arms AS a
     MERGE (arm:Arm {id: a.id})
-    ON CREATE SET
+    SET
         arm.name = a.name,
-        arm.description = a.description,
-        arm.type = a.dataOriginType.decode
-    ON MATCH SET
-        arm.name = a.name,
-        arm.description = a.description,
-        arm.type = a.dataOriginType.decode
-    MERGE (sd)-[:HAS_ARM]->(arm)`
+        arm.description = a.description
+    MERGE (sd)-[:HAS_ARM]->(arm)
+
+    // Process Arm Type correctly
+    WITH arm, a
+    WHERE a.dataOriginType IS NOT NULL
+    MERGE (dot:ArmDataOriginType {id: a.dataOriginType.id})
+    SET
+        dot.code = a.dataOriginType.code,
+        dot.codeSystem = a.dataOriginType.codeSystem,
+        dot.codeSystemVersion = a.dataOriginType.codeSystemVersion,
+        dot.decode = a.dataOriginType.decode,
+        dot.instanceType = a.dataOriginType.instanceType
+    MERGE (arm)-[:HAS_DATA_ORIGIN_TYPE]->(dot)`
+
+	qEncounters := `
+    UNWIND $study.versions AS v
+    UNWIND v.studyDesigns AS d
+    MATCH (sd:StudyDesign {id: d.id})
+    UNWIND d.encounters AS a
+    MERGE (enc:Encounter {id: a.id})
+    SET
+        enc.name = a.name,
+        enc.description = a.description,
+	enc.label = a.label,
+	enc.description = a.description,
+	enc.scheduledAtId = a.scheduledAtId
+    MERGE (sd)-[:HAS_ENCOUNTER]->(enc)
+    MERGE (ect:EncounterType {id: a.type.id})
+    SET
+        ect.code = a.type.code,
+	ect.codeSystem = a.type.codeSystem,
+	ect.codeSystemVersion = a.type.codeSystemVersion,
+	ect.decode = a.type.decode,
+	ect.instanceType = a.type.instanceType
+    MERGE (enc)-[:HAS_ENCOUNTER_TYPE]->(ect)
+    `
+
+	qActivities := `
+    UNWIND $study.versions AS v
+    UNWIND v.studyDesigns AS d
+    MATCH (sd:StudyDesign {id: d.id})
+    UNWIND d.activities AS a
+    MERGE (act:Activity {id: a.id})
+    SET
+        act.name = a.name,
+        act.description = a.description,
+        act.label = a.label,
+        act.instanceType = a.instanceType
+    MERGE (sd)-[:HAS_ACTIVITY]->(act)
+    WITH act, a
+    UNWIND a.definedProcedures AS dp
+    MERGE (proc:DefinedProcedure {id: dp.id})
+    SET
+        proc.name = dp.name,
+        proc.description = dp.description,
+        proc.label = dp.label,
+        proc.procedureType = dp.procedureType,
+        proc.studyInterventionId = dp.studyInterventionId,
+        proc.instanceType = dp.instanceType
+    MERGE (act)-[:HAS_DEFINED_PROCEDURE]->(proc)
+    WITH proc, dp
+    WHERE dp.code IS NOT NULL
+    MERGE (c:Code {id: dp.code.id})
+    SET
+        c.code = dp.code.code,
+        c.codeSystem = dp.code.codeSystem,
+        c.codeSystemVersion = dp.code.codeSystemVersion,
+        c.decode = dp.code.decode,
+        c.instanceType = dp.code.instanceType
+    MERGE (proc)-[:HAS_CODE]->(c)`
 
 	qEpochs := `
     UNWIND $study.versions AS v
     UNWIND v.studyDesigns AS d
-    UNWIND d.epochs AS e
     MATCH (sd:StudyDesign {id: d.id})
+    UNWIND d.epochs AS e
     MERGE (ep:Epoch {id: e.id})
-    ON CREATE SET
-        ep.name = e.name,
-        ep.description = e.description
-    ON MATCH SET
+    SET
         ep.name = e.name,
         ep.description = e.description
     MERGE (sd)-[:HAS_EPOCH]->(ep)
@@ -148,14 +199,10 @@ func processStudy(ctx context.Context, study models.Study) error {
 
 	qAmendments := `
     UNWIND $study.versions AS v
-    UNWIND v.amendments AS a
     MATCH (sv:StudyVersion {id: v.id})
+    UNWIND v.amendments AS a
     MERGE (am:StudyAmendment {id: a.id})
-    ON CREATE SET
-        am.name = a.name,
-        am.summary = a.summary,
-        am.rationale = a.rationale
-    ON MATCH SET
+    SET
         am.name = a.name,
         am.summary = a.summary,
         am.rationale = a.rationale
@@ -165,65 +212,54 @@ func processStudy(ctx context.Context, study models.Study) error {
     UNWIND $study.documentedBy AS d
     MATCH (s:Study {id: $study.id})
     MERGE (doc:StudyDefinitionDocument {id: d.id})
-    ON CREATE SET
-        doc.name = d.name
-    ON MATCH SET
-        doc.name = d.name
+    SET
+        doc.name = CASE WHEN d.name IS NOT NULL THEN d.name ELSE '' END,
+        doc.description = CASE WHEN d.description IS NOT NULL THEN d.description ELSE '' END,
+        doc.label = CASE WHEN d.label IS NOT NULL THEN d.label ELSE '' END
     MERGE (s)-[:DOCUMENTED_BY]->(doc)`
 
-	// This is the corrected qOrganizations query from Step 2
-	qOrganizations := `
+	qOrganizationsAndAddresses := `
     UNWIND $study.versions AS v
+    MATCH (sv:StudyVersion {id: v.id})
     UNWIND v.organizations AS o
-    MATCH (s:Study {id: $study.id})
     MERGE (org:Organization {id: o.id})
-    ON CREATE SET
-        org.name = o.name,
-        org.type = o.type.decode
-    ON MATCH SET
-        org.name = o.name,
-        org.type = o.type.decode
-    MERGE (s)-[:HAS_ORGANIZATION]->(org)`
+    SET
+        org.name = o.name
+    MERGE (sv)-[:HAS_ORGANIZATION]->(org)
 
-	legalAddress := `
-		UNWIND $study.versions AS v
-		UNWIND v.organizations AS o
-		MATCH (org:Organization {id: o.id})
+    WITH org, o
+    WHERE o.type IS NOT NULL
+    MERGE (ot:OrganizationType {id: o.type.id})
+    SET
+        ot.code = o.type.code,
+        ot.codeSystem = o.type.codeSystem,
+        ot.codeSystemVersion = o.type.codeSystemVersion,
+        ot.decode = o.type.decode,
+        ot.instanceType = o.type.instanceType
+    MERGE (org)-[:HAS_ORGANIZATION_TYPE]->(ot)
 
-		MERGE (la:LegalAddress {id: o.legalAddress.id})
-		ON CREATE SET
-			la.extensionAttributes = o.legalAddress.extensionAttributes,
-			la.text = o.legalAddress.text,
-			la.lines = o.legalAddress.lines,
-			la.city = o.legalAddress.city,
-			la.district = o.legalAddress.district,
-			la.state = o.legalAddress.state,
-			la.postalCode = o.legalAddress.postalCode,
-			la.instanceType = o.legalAddress.instanceType
-		ON MATCH SET
-			la.extensionAttributes = o.legalAddress.extensionAttributes,
-			la.text = o.legalAddress.text,
-			la.lines = o.legalAddress.lines,
-			la.city = o.legalAddress.city,
-			la.district = o.legalAddress.district,
-			la.state = o.legalAddress.state,
-			la.postalCode = o.legalAddress.postalCode,
-			la.instanceType = o.LegalAddress.instanceType
-		MERGE (org)-[:HAS_LEGAL_ADDRESS]->(la)
-		MERGE (c:Country {id: o.legalAddress.country.id})
-		ON CREATE SET
-			c.code = o.legalAddress.country.code,
-			c.codeSystem = o.legalAddress.country.codeSystem,
-			c.codeSystemVersion = o.legalAddress.country.codeSystemVersion,
-			c.decode = o.legalAddress.country.decode,
-			c.instanceType = o.legalAddress.country.instanceType
-		ON MATCH SET
-			c.code = o.legalAddress.country.code,
-			c.codeSystem = o.legalAddress.country.codeSystem,
-			c.codeSystemVersion = o.legalAddress.country.codeSystemVersion,
-			c.decode = o.legalAddress.country.decode,
-			c.instanceType = o.legalAddress.country.instanceType
-		MERGE (la)-[:LOCATED_IN]->(c)`
+    WITH org, o
+    WHERE o.legalAddress IS NOT NULL
+    MERGE (la:LegalAddress {id: o.legalAddress.id})
+    SET
+        la.text = o.legalAddress.text,
+        la.city = o.legalAddress.city,
+        la.district = o.legalAddress.district,
+        la.state = o.legalAddress.state,
+        la.postalCode = o.legalAddress.postalCode,
+        la.instanceType = o.legalAddress.instanceType
+    MERGE (org)-[:HAS_LEGAL_ADDRESS]->(la)
+
+    WITH la, o
+    WHERE o.legalAddress.country IS NOT NULL
+    MERGE (c:Country {id: o.legalAddress.country.id})
+    SET
+        c.code = o.legalAddress.country.code,
+        c.codeSystem = o.legalAddress.country.codeSystem,
+        c.codeSystemVersion = o.legalAddress.country.codeSystemVersion,
+        c.decode = o.legalAddress.country.decode,
+        c.instanceType = o.legalAddress.country.instanceType
+    MERGE (la)-[:LOCATED_IN]->(c)`
 
 	session := driver.NewSession(ctx, neo4j.SessionConfig{})
 	defer session.Close(ctx)
@@ -235,9 +271,10 @@ func processStudy(ctx context.Context, study models.Study) error {
 			qArms,
 			qEpochs,
 			qAmendments,
-			qOrganizations,
+			qOrganizationsAndAddresses,
 			qDocuments,
-			legalAddress,
+			qEncounters,
+			qActivities,
 		} {
 			result, err := tx.Run(ctx, q, params)
 			if err != nil {
@@ -245,8 +282,8 @@ func processStudy(ctx context.Context, study models.Study) error {
 				return nil, fmt.Errorf("error executing query part: %w", err)
 			}
 			if err = result.Err(); err != nil {
-				log.Printf("Error consuming result: %v. Query was: %s", err, q)
-				return nil, fmt.Errorf("error consuming result: %w", err)
+				log.Printf("Error from result: %v. Query was: %s", err, q)
+				return nil, fmt.Errorf("error from result: %w", err)
 			}
 		}
 		return nil, nil

@@ -34,10 +34,62 @@ type StudyDesign {
   studyType: String
   studyPhase: String
   arms: [Arm!]
+  encounters: [Encounter!]
+  activities: [Activity!]
   epochs: [Epoch!]
   elements: [Element!]
   studyCells: [StudyCell!]
 }
+
+type Encounter {
+  id: ID!
+  name: String
+  label: String
+  description: String
+  type: EncounterType
+  previousId: String
+  nextId: String
+  scheduledAtId: String
+}
+
+type EncounterType {
+  id: ID!
+  code: String!
+  codeSystem: String!
+  codeSystemVersion: String!
+  decode: String!
+  instanceType: String!
+}
+
+type Activity {
+  id: ID!
+  name: String
+  label: String
+  description: String
+  definedProcedures: [DefinedProcedure!]
+  instanceType: String!
+}
+
+type DefinedProcedure {
+  id: ID!
+  name: String
+  label: String
+  description: String
+  procedureType: String
+  code: Code
+  studyInterventionId: String
+  instanceType: String!
+}
+
+type Code {
+  id: ID!
+  code: String!
+  codeSystem: String!
+  codeSystemVersion: String!
+  decode: String!
+  instanceType: String!
+}
+
 
 """
 A group of subjects in a clinical trial who receive a specific intervention.
@@ -170,6 +222,16 @@ type Query {
   Fetches a single organization by its unique ID.
   """
   organization(id: ID!): Organization
+
+  """
+  Fetches all activities
+  """
+  activities: [Activity!]
+
+  """
+  Fetch all encounters defined in the study designs.
+  """
+  encounters: [Encounter!]
 }
 
 type Mutation {

@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"github.com/ankit-lilly/dtd-go-backend/pkg/models"
 	"log"
 	"os"
-	"sdrHandler/models"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"

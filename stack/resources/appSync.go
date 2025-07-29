@@ -25,7 +25,7 @@ func NewAppSyncApi( stack awscdk.Stack, vpc awsec2.Vpc, resolverFunc awslambda.I
 
 	ds := appSyncAPI.AddLambdaDataSource(jsii.String("ResolverDS"), resolverFunc, nil)
 
-	for _, field := range []string{"study", "studies", "studyVersion", "organization"}  {
+	for _, field := range []string{"study", "studies", "studyVersion", "organization", "encounters", "activities"}  {
 		ds.CreateResolver(&field, &appsync.BaseResolverProps{
 			TypeName:  jsii.String("Query"),
 			FieldName: jsii.String(field),

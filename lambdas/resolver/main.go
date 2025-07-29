@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/ankit-lilly/dtd-go-backend/pkg/models"
 	"log"
+
 	"os"
 	"strings"
 
@@ -15,6 +17,18 @@ import (
 var (
 	driver neo4j.DriverWithContext
 )
+
+type AppSyncEvent struct {
+	Info      AppSyncInfo            `json:"info"`
+	Arguments map[string]interface{} `json:"arguments"`
+	Source    map[string]interface{} `json:"source"`
+}
+
+type AppSyncInfo struct {
+	FieldName        string   `json:"fieldName"`
+	ParentTypeName   string   `json:"parentTypeName"`
+	SelectionSetList []string `json:"selectionSetList"`
+}
 
 func init() {
 	neptuneEndpoint := os.Getenv("NEPTUNE_ENDPOINT")
@@ -80,8 +94,6 @@ func handleMutationDeleteStudy(ctx context.Context, args map[string]interface{})
 		return false, fmt.Errorf("study ID is required for deletion")
 	}
 
-	// This query finds all nodes connected to the study (at any depth) and the study itself.
-	// DETACH DELETE then removes all these nodes and their relationships.
 	query := `
 	MATCH (s:Study {id: $id})
 	OPTIONAL MATCH (s)-[*]->(descendant)
@@ -99,7 +111,91 @@ func handleMutationDeleteStudy(ctx context.Context, args map[string]interface{})
 	return true, nil
 }
 
-func handleQueryStudy(ctx context.Context, args map[string]interface{}, selectionSet []string) (*Study, error) {
+func handleQueryActivities(ctx context.Context, args map[string]interface{}, selectionSet []string) ([]*models.Activity, error) {
+
+	// Corrected query to get each activity with its procedures
+	finalQuery := `
+		MATCH (a:Activity)
+		OPTIONAL MATCH (a)-[:HAS_DEFINED_PROCEDURE]->(p:DefinedProcedure)
+		WITH a, collect(p) AS procedures
+		RETURN a {
+			.id,
+			.name,
+			.label,
+			.description,
+			definedProcedures: procedures
+		} AS activity`
+
+	records, err := executeReadQuery(ctx, finalQuery, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query for activities: %w", err)
+	}
+
+	var activities []*models.Activity
+
+	for _, record := range records {
+		activityData, ok := record.Get("activity")
+		if !ok {
+			log.Println("Warning: found a record without an 'activity' field")
+			continue
+		}
+		log.Printf("Processing activity data: %v", activityData)
+
+		var activity models.Activity
+		jsonBytes, err := json.Marshal(activityData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal activity data: %w", err)
+		}
+		if err := json.Unmarshal(jsonBytes, &activity); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal activity data into struct: %w", err)
+		}
+		activities = append(activities, &activity)
+	}
+
+	return activities, nil
+}
+
+func handleQueryEncounters(ctx context.Context, args map[string]interface{}, selectionSet []string) ([]*models.Encounter, error) {
+
+	finalQuery := `
+		MATCH (e:Encounter)
+		OPTIONAL MATCH (e)-[:HAS_ENCOUNTER_TYPE]->(p:EncounterType)
+		WITH e, collect(p) AS encounterTypes
+		RETURN e {
+			.id,
+			.name,
+			.label,
+			.description,
+			type: encounterTypes
+		} AS encounter`
+	records, err := executeReadQuery(ctx, finalQuery, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query for encounters: %w", err)
+	}
+	log.Println("Query for encounters executed successfully.", records)
+	var encounters []*models.Encounter
+	for _, record := range records {
+		encounterData, ok := record.Get("encounter")
+		if !ok {
+			log.Println("Warning: found a record without an 'encounter' field")
+			continue
+		}
+
+		log.Printf("Processing encounter data: %v", encounterData)
+		var encounter models.Encounter
+		jsonBytes, err := json.Marshal(encounterData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal encounter data: %w", err)
+		}
+		if err := json.Unmarshal(jsonBytes, &encounter); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal encounter data into struct: %w", err)
+		}
+		encounters = append(encounters, &encounter)
+	}
+	return encounters, nil
+}
+
+func handleQueryStudy(ctx context.Context, args map[string]interface{}, selectionSet []string) (*models.Study, error) {
 	studyID, ok := args["id"].(string)
 	if !ok || studyID == "" {
 		return nil, fmt.Errorf("study ID is required")
@@ -145,26 +241,43 @@ func handleQueryStudy(ctx context.Context, args map[string]interface{}, selectio
 				designSubProjection = append(designSubProjection, armsProjection)
 			}
 
+			if hasField("versions/studyDesigns/encounters", selectionSet) {
+				encountersProjection := "encounters: [(d)-[:HAS_ENCOUNTER]->(e:Encounter) | e { .id, .name, .label, .description }]"
+				designSubProjection = append(designSubProjection, encountersProjection)
+			}
+
+			if hasField("versions/studyDesigns/activities", selectionSet) {
+				activitiesProjection := "activities: [(d)-[:HAS_ACTIVITY]->(a:Activity) | a { .id, .name, .label, .description }]"
+				designSubProjection = append(designSubProjection, activitiesProjection)
+			}
+
 			if hasField("versions/studyDesigns/epochs", selectionSet) {
 				epochsProjection := "epochs: [(d)-[:HAS_EPOCH]->(e:Epoch) | e { .id, .name, .description }]"
 				designSubProjection = append(designSubProjection, epochsProjection)
-			}
-
-			if hasField("versions/organizations", selectionSet) {
-				orgsProjection := "organizations: [(d)-[:HAS_ORGANIZATION]->(o:Organization) | o { .id, .name, .type, .legalAddress }]"
-				designSubProjection = append(designSubProjection, orgsProjection)
-
-				if hasField("versions/organizations/legalAddress", selectionSet) {
-					// `head()` is used because we expect one legal address per organization.
-					legalAddressProjection := "legalAddress: head([(o)-[:HAS_LEGAL_ADDRESS]->(la:LegalAddress) | la { .*, country: head([(la)-[:LOCATED_IN]->(c:Country) | c { .* }]) }])"
-					designSubProjection = append(designSubProjection, legalAddressProjection)
-				}
 			}
 
 			if len(designSubProjection) > 0 {
 				designsProjection := fmt.Sprintf("studyDesigns: [(v)-[:INCLUDES_DESIGN]->(d:StudyDesign) | d { %s }]", strings.Join(designSubProjection, ", "))
 				versionSubProjection = append(versionSubProjection, designsProjection)
 			}
+		}
+
+		if hasField("versions/organizations", selectionSet) {
+			var orgSubProjection []string
+			if hasField("versions/organizations/id", selectionSet) {
+				orgSubProjection = append(orgSubProjection, ".id")
+			}
+			if hasField("versions/organizations/name", selectionSet) {
+				orgSubProjection = append(orgSubProjection, ".name")
+			}
+
+			if hasField("versions/organizations/legalAddress", selectionSet) {
+				legalAddressProjection := `legalAddress: head([(o)-[:HAS_LEGAL_ADDRESS]->(la:LegalAddress) | la { .*, country: head([(la)-[:LOCATED_IN]->(c:Country) | c {.*}]) }])`
+				orgSubProjection = append(orgSubProjection, legalAddressProjection)
+			}
+
+			orgsProjection := fmt.Sprintf("organizations: [(v)-[:HAS_ORGANIZATION]->(o:Organization) | o { %s }]", strings.Join(orgSubProjection, ", "))
+			versionSubProjection = append(versionSubProjection, orgsProjection)
 		}
 
 		if hasField("versions/amendments", selectionSet) {
@@ -176,12 +289,6 @@ func handleQueryStudy(ctx context.Context, args map[string]interface{}, selectio
 			versionsProjection := fmt.Sprintf("versions: [(s)-[:HAS_VERSION]->(v:StudyVersion) | v { %s }]", strings.Join(versionSubProjection, ", "))
 			projectionParts = append(projectionParts, versionsProjection)
 		}
-	}
-
-	if hasField("organizations", selectionSet) {
-		// This assumes organizations are linked directly to the Study node `s`
-		orgsProjection := "organizations: [(s)-[:HAS_ORGANIZATION]->(o:Organization) | o { .id, .name, .type, .legalAddress }]"
-		projectionParts = append(projectionParts, orgsProjection)
 	}
 
 	if hasField("documentedBy", selectionSet) {
@@ -216,7 +323,7 @@ func handleQueryStudy(ctx context.Context, args map[string]interface{}, selectio
 		return nil, fmt.Errorf("could not find 'study' in result record")
 	}
 
-	var study Study
+	var study models.Study
 	jsonBytes, err := json.Marshal(studyData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal study data: %w", err)
@@ -236,6 +343,10 @@ func handler(ctx context.Context, event AppSyncEvent) (interface{}, error) {
 		switch event.Info.FieldName {
 		case "study":
 			return handleQueryStudy(ctx, event.Arguments, event.Info.SelectionSetList)
+		case "activities":
+			return handleQueryActivities(ctx, event.Arguments, event.Info.SelectionSetList)
+		case "encounters":
+			return handleQueryEncounters(ctx, event.Arguments, event.Info.SelectionSetList)
 		default:
 			return nil, fmt.Errorf("unknown query field: %s", event.Info.FieldName)
 		}
