@@ -18,5 +18,9 @@
     "us-west-1b",
     "us-west-1c"
   ],
-  "cli-telemetry": false
+  "cli-telemetry": false,
+  "acknowledged-issue-numbers": [
+    34892,
+    34892
+  ]
 }

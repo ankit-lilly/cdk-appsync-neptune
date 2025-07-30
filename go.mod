@@ -7,6 +7,7 @@ require (
 	github.com/aws/aws-cdk-go/awscdkneptunealpha/v2 v2.207.0-alpha.0
 	github.com/aws/constructs-go/constructs/v10 v10.4.2
 	github.com/aws/jsii-runtime-go v1.112.0
+	github.com/neo4j/neo4j-go-driver/v5 v5.28.1
 )
 
 require (

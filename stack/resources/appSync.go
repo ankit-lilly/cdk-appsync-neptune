@@ -12,7 +12,7 @@ func NewAppSyncApi( stack awscdk.Stack, vpc awsec2.Vpc, resolverFunc awslambda.I
 
 	appSyncAPI := appsync.NewGraphqlApi(stack, jsii.String("NewsApi"), &appsync.GraphqlApiProps{
 		Name:   jsii.String("NewsGraphApi"),
-		Schema: appsync.SchemaFile_FromAsset(jsii.String("./schema/schema.graphql")),
+		Definition: appsync.Definition_FromFile(jsii.String("./schema/schema.graphql")),
 		AuthorizationConfig: &appsync.AuthorizationConfig{
 			DefaultAuthorization: &appsync.AuthorizationMode{
 				AuthorizationType: appsync.AuthorizationType_API_KEY,
