@@ -32,23 +32,23 @@ v                                                                         v
             | 1. Triggers Writer Lambda                                  | 1. Invokes Resolver Lambda
             v                                                            v
 +------------------------+                                +-----------------------------+
-|     "SDRHandler" Lambda    |                                |   "Resolver" Lambda         |
+|     "SDRHandler" Lambda    |                            |   "Resolver" Lambda         |
 |  (Receives & Validates)|                                | (Handles GraphQL queries)   |
 +-----------+------------+                                +--------------+--------------+
             |                                                            | 2. Connects to Neptune
             | 2. Sends message to SQS                                    |    and reads data
             v                                                            |
-+------------------------+                                             |
-|      Amazon SQS        |                                             |
-|        (Queue)         |                                             |
-+-----------+------------+                                             |
++------------------------+                                               |
+|      Amazon SQS        |                                               |
+|        (Queue)         |                                               |
++-----------+------------+                                               |
             |                                                            |
             | 3. Triggers Processor Lambda                               |
             v                                                            |
-+------------------------+                                             |
-|   "SDRProcessor" Lambda   |                                             |
-|  (Parses & Transforms) |                                             |
-+-----------+------------+                                             |
++------------------------+                                               |
+|   "SDRProcessor" Lambda   |                                            |
+|  (Parses & Transforms) |                                               |
++-----------+------------+                                               |
             |                                                            |
             | 4. Connects to Neptune                                     |
             |    and writes data                                         |
