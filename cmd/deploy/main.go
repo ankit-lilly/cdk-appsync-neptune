@@ -18,6 +18,12 @@ func main() {
 	app := awscdk.NewApp(nil)
 
 	stack.NewSDRBackendStack(app, APP_ID, awscdk.StackProps{
+		Tags: &map[string]*string{
+			"App": jsii.String(APP_ID),
+			"Environment": jsii.String("Production"),
+			"Owner": jsii.String("AnkitB"),
+			"Project": jsii.String("SDR POC"),
+		},
 			StackName: jsii.String(STACK_NAME),
 			Env: &awscdk.Environment{
 				Account: jsii.String(ACCOUNT_ID),
