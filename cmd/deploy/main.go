@@ -20,7 +20,7 @@ func main() {
 	stack.NewSDRBackendStack(app, APP_ID, awscdk.StackProps{
 		Tags: &map[string]*string{
 			"App": jsii.String(APP_ID),
-			"Environment": jsii.String("Production"),
+			"Environment": jsii.String("development"),
 			"Owner": jsii.String("AnkitB"),
 			"Project": jsii.String("SDR POC"),
 		},

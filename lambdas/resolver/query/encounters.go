@@ -22,6 +22,7 @@ func HandleQueryEncounters(ctx context.Context, args map[string]interface{}, sel
 			.description,
 			type: encounterTypes
 		} AS encounter`
+
 	records, err := neptunedb.ExecuteReadQuery(ctx, finalQuery, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query for encounters: %w", err)

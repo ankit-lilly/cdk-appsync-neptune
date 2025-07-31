@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/ankit-lilly/dtd-go-backend/internal/neptunedb"
 	"github.com/ankit-lilly/dtd-go-backend/pkg/models"
+	"log"
 	"strings"
 )
 
@@ -26,7 +27,6 @@ func HandleQueryStudy(ctx context.Context, args map[string]interface{}, selectio
 
 	var projectionParts []string
 
-	// Dynamically build projection for top-level Study fields
 	if hasField("id", selectionSet) {
 		projectionParts = append(projectionParts, ".id")
 	}
@@ -40,7 +40,6 @@ func HandleQueryStudy(ctx context.Context, args map[string]interface{}, selectio
 		projectionParts = append(projectionParts, ".label")
 	}
 
-	// Logic for 'versions' and its nested fields
 	if hasField("versions", selectionSet) {
 		var versionSubProjection []string
 		if hasField("versions/id", selectionSet) {
@@ -115,7 +114,6 @@ func HandleQueryStudy(ctx context.Context, args map[string]interface{}, selectio
 	}
 
 	if hasField("documentedBy", selectionSet) {
-		// This projects only the fields that are actually being saved in the ingestion step.
 		docsProjection := "documentedBy: [(s)-[:DOCUMENTED_BY]->(d:StudyDefinitionDocument) | d { .id, .name }]"
 		projectionParts = append(projectionParts, docsProjection)
 	}
@@ -129,6 +127,7 @@ func HandleQueryStudy(ctx context.Context, args map[string]interface{}, selectio
 		strings.Join(projectionParts, ", "),
 	)
 
+	log.Printf("FinalQuery: %s\nWith Params: %+v", finalQuery, studyID)
 	params := map[string]interface{}{"id": studyID}
 	records, err := neptunedb.ExecuteReadQuery(ctx, finalQuery, params)
 	if err != nil {
