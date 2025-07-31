@@ -3,7 +3,7 @@ package mutations
 import (
 	"context"
 	"fmt"
-	"github.com/ankit-lilly/dtd-go-backend/internal/neptunedb"
+	"github.com/ankit-lilly/dtd-go-backend/internal/neptunedb/cypher"
 	"log"
 )
 
@@ -20,7 +20,7 @@ func HandleMutationDeleteStudy(ctx context.Context, args map[string]interface{})
 	`
 	params := map[string]interface{}{"id": studyID}
 
-	err := neptunedb.ExecuteWriteQuery(ctx, query, params)
+	err := cypher.ExecuteWriteQuery(ctx, query, params)
 	if err != nil {
 		log.Printf("Error deleting study %s: %v", studyID, err)
 		return false, err

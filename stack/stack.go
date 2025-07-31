@@ -54,6 +54,12 @@ func NewSDRBackendStack(scope constructs.Construct, id string, sprops awscdk.Sta
 	}))
 
 	cfnOutput(stack, map[string]*awscdk.CfnOutputProps{
+		"NeptuneHostEndpoint": {
+			Value: cluster.ClusterEndpoint().Hostname(),
+		},
+		"NeptuneReaderEndpoint": {
+			Value: cluster.ClusterReadEndpoint().Hostname(),
+		},
 		"AppSyncAPIEndpoint": {
 			Value: appSyncAPI.GraphqlUrl(),
 		},

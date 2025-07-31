@@ -31,6 +31,8 @@ func handler(ctx context.Context, event AppSyncEvent) (interface{}, error) {
 		switch event.Info.FieldName {
 		case "study":
 			return query.HandleQueryStudy(ctx, event.Arguments, event.Info.SelectionSetList)
+		case "studies":
+			return query.HandleQueryStudies(ctx, event.Arguments, event.Info.SelectionSetList)
 		case "activities":
 			return query.HandleQueryActivities(ctx, event.Arguments, event.Info.SelectionSetList)
 		case "encounters":

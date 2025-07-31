@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/ankit-lilly/dtd-go-backend/internal/neptunedb"
+	"github.com/ankit-lilly/dtd-go-backend/internal/neptunedb/cypher"
 	"github.com/ankit-lilly/dtd-go-backend/pkg/models"
 	"log"
 )
@@ -23,7 +23,7 @@ func HandleQueryEncounters(ctx context.Context, args map[string]interface{}, sel
 			type: encounterTypes
 		} AS encounter`
 
-	records, err := neptunedb.ExecuteReadQuery(ctx, finalQuery, nil)
+	records, err := cypher.ExecuteReadQuery(ctx, finalQuery, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query for encounters: %w", err)
 	}

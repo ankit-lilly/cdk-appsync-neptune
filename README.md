@@ -17,22 +17,24 @@ It exposes two APIs:
 Neptune database.
 
 ```shell
-+-----------------------+
-|   End User / Client   |
-+-----------+-----------+
-            |
-+-------------------------------------------------------------------------+
-| (REST POST to /sdr)                                             | (GraphQL Query)
-v                                                                         v
+                            +-----------------------+
+                            |   End User / Client   |
+                            +-----------+-----------+
+                                        |
+                                        | (Inteferface with SDR) 
+                                        v 
+            +------------------------------------------------------------+
+            | (REST POST to /sdr)                                        | (GraphQL API)
+            v                                                            v
 +------------------------+                                +-----------------------------+
 |  Amazon API Gateway    |                                |      AWS AppSync API        |
 |  (REST API Endpoint)   |                                |    (GraphQL Endpoint)       |
 +-----------+------------+                                +--------------+--------------+
             |                                                            |
-            | 1. Triggers Writer Lambda                                  | 1. Invokes Resolver Lambda
+            | 1. Triggers Handler Lambda                                 | 1. Invokes Resolver Lambda
             v                                                            v
 +------------------------+                                +-----------------------------+
-|     "SDRHandler" Lambda    |                            |   "Resolver" Lambda         |
+|  SDRHandler" Lambda    |                                |   "Resolver" Lambda         |
 |  (Receives & Validates)|                                | (Handles GraphQL queries)   |
 +-----------+------------+                                +--------------+--------------+
             |                                                            | 2. Connects to Neptune
@@ -46,7 +48,7 @@ v                                                                         v
             | 3. Triggers Processor Lambda                               |
             v                                                            |
 +------------------------+                                               |
-|   "SDRProcessor" Lambda   |                                            |
+| SDRProcessor" Lambda   |                                               |
 |  (Parses & Transforms) |                                               |
 +-----------+------------+                                               |
             |                                                            |
@@ -55,7 +57,7 @@ v                                                                         v
             v                                                            v
 +-----------------------------------------------------------------------------------+
 |                                                                                   |
-|                               Amazon Neptune DB                                   |
+|                               Amazon Neptune / SDR                                |
 |                                (Graph Database)                                   |
 |                                                                                   |
 +-----------------------------------------------------------------------------------+

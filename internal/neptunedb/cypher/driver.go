@@ -1,4 +1,4 @@
-package neptunedb
+package cypher
 
 import (
 	"context"

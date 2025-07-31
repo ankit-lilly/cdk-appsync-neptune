@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/ankit-lilly/dtd-go-backend/internal/neptunedb"
+	"github.com/ankit-lilly/dtd-go-backend/internal/neptunedb/cypher"
 	"github.com/ankit-lilly/dtd-go-backend/pkg/models"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
@@ -215,7 +215,7 @@ func SaveStudyToGraph(ctx context.Context, study models.Study) error {
         c.instanceType = o.legalAddress.country.instanceType
     MERGE (la)-[:LOCATED_IN]->(c)`
 
-	driver := neptunedb.GetDriver()
+	driver := cypher.GetDriver()
 	session := driver.NewSession(ctx, neo4j.SessionConfig{})
 	defer session.Close(ctx)
 

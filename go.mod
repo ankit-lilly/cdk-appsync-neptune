@@ -3,6 +3,7 @@ module github.com/ankit-lilly/dtd-go-backend
 go 1.24.5
 
 require (
+	github.com/apache/tinkerpop/gremlin-go/v3 v3.7.3
 	github.com/aws/aws-cdk-go/awscdk/v2 v2.207.0
 	github.com/aws/aws-cdk-go/awscdkneptunealpha/v2 v2.207.0-alpha.0
 	github.com/aws/constructs-go/constructs/v10 v10.4.2
@@ -16,12 +17,16 @@ require (
 	github.com/cdklabs/awscdk-asset-node-proxy-agent-go/nodeproxyagentv6/v2 v2.1.0 // indirect
 	github.com/cdklabs/cloud-assembly-schema-go/awscdkcloudassemblyschema/v45 v45.2.0 // indirect
 	github.com/fatih/color v1.18.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/nicksnyder/go-i18n/v2 v2.4.1 // indirect
 	github.com/yuin/goldmark v1.4.13 // indirect
 	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616 // indirect
 	golang.org/x/mod v0.24.0 // indirect
 	golang.org/x/sync v0.14.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/text v0.19.0 // indirect
 	golang.org/x/tools v0.33.0 // indirect
 )
