@@ -89,7 +89,6 @@ func SaveStudyToGraph(ctx context.Context, study models.Study) error {
         enc.name = a.name,
         enc.description = a.description,
 				enc.label = a.label,
-				enc.description = a.description,
 				enc.scheduledAtId = a.scheduledAtId
     MERGE (sd)-[:HAS_ENCOUNTER]->(enc)
     MERGE (ect:EncounterType {id: a.type.id})
