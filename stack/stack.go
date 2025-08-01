@@ -51,6 +51,7 @@ func NewSDRBackendStack(scope constructs.Construct, id string, sprops awscdk.Sta
 
 	sdrProcessor.AddEventSource(awslambdaeventsources.NewSqsEventSource(queue, &awslambdaeventsources.SqsEventSourceProps{
 		BatchSize: jsii.Number(10),
+		ReportBatchItemFailures: jsii.Bool(true),
 	}))
 
 	cfnOutput(stack, map[string]*awscdk.CfnOutputProps{

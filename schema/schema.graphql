@@ -81,10 +81,6 @@ type Code {
   instanceType: String!
 }
 
-
-"""
-A group of subjects in a clinical trial who receive a specific intervention.
-"""
 type Arm {
   id: ID!
   name: String
@@ -93,9 +89,6 @@ type Arm {
   studyDesign: StudyDesign!
 }
 
-"""
-A period of time in a clinical trial during which subjects are in a consistent state.
-"""
 type Epoch {
   id: ID!
   name: String
@@ -106,18 +99,12 @@ type Epoch {
   precededBy: Epoch
 }
 
-"""
-A component of the study design, often representing a specific treatment or assessment.
-"""
 type Element {
     id: ID!
     name: String
     description: String
 }
 
-"""
-Represents the combination of an Arm and an Epoch.
-"""
 type StudyCell {
     id: ID!
     arm: Arm!
@@ -125,9 +112,6 @@ type StudyCell {
     elements: [Element!]
 }
 
-"""
-An amendment to the study protocol.
-"""
 type StudyAmendment {
   id: ID!
   name: String
@@ -136,9 +120,6 @@ type StudyAmendment {
   version: StudyVersion!
 }
 
-"""
-An intervention being investigated in the study (e.g., a drug, device).
-"""
 type StudyIntervention {
   id: ID!
   name: String
@@ -147,9 +128,6 @@ type StudyIntervention {
   type: String
 }
 
-"""
-An organization involved in the study (e.g., sponsor, CRO).
-"""
 type Organization {
   id: ID!
   name: String
@@ -183,7 +161,6 @@ type StudyDefinitionDocument {
     name: String
     type: String
 }
-
 
 type Query {
   study(id: ID!): Study

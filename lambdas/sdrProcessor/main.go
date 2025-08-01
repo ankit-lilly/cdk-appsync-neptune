@@ -28,22 +28,30 @@ func parseStudyData(data string) (models.Study, error) {
 	return payload.Study, nil
 }
 
-func handler(ctx context.Context, event events.SQSEvent) error {
+func handler(ctx context.Context, event events.SQSEvent) (events.SQSEventResponse, error) {
+	var failedMessages []events.SQSBatchItemFailure
 	for _, message := range event.Records {
 		log.Printf("Processing message ID: %s", message.MessageId)
 
 		study, err := parseStudyData(message.Body)
 		if err != nil {
 			log.Printf("Error parsing study data: %v", err)
+			failedMessages = append(failedMessages, events.SQSBatchItemFailure{
+				ItemIdentifier: message.MessageId,
+			})
 			continue
 		}
 
 		if err := SaveStudyToGraph(ctx, study); err != nil {
 			log.Printf("Error processing study %s: %v", study.ID, err)
-			return err
+			failedMessages = append(failedMessages, events.SQSBatchItemFailure{
+				ItemIdentifier: message.MessageId,
+			})
 		}
 	}
-	return nil
+	return events.SQSEventResponse{
+		BatchItemFailures: failedMessages,
+	}, nil
 }
 
 func main() {
