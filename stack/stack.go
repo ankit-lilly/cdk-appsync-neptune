@@ -25,21 +25,31 @@ func NewSDRBackendStack(scope constructs.Construct, id string, sprops awscdk.Sta
 	lambdaFactory := resources.NewLambdaFactory(stack, vpc, lambdaRole)
 
 
- sdrHandler :=	lambdaFactory.CreateGoFunction("sdrHandler", "lambdas/sdrHandler/function.zip", map[string]*string{
+	sdrHandler :=	lambdaFactory.CreateGoFunction(
+		"sdrHandler", 
+		"lambdas/sdrHandler/function.zip", 
+		map[string]*string{ 
 			"QUEUE_URL": queue.QueueUrl(),
-	})
+		},
+  )
 
 	queue.GrantSendMessages(sdrHandler)
 
-	sdrProcessor := lambdaFactory.CreateGoFunction("sdrProcessor", "lambdas/sdrProcessor/function.zip", map[string]*string{
+	sdrProcessor := lambdaFactory.CreateGoFunction(
+		"sdrProcessor", 
+		"lambdas/sdrProcessor/function.zip", 
+		map[string]*string{
 			"NEPTUNE_ENDPOINT": cluster.ClusterEndpoint().Hostname(),
 			"NEPTUNE_PORT":     jsii.String("8182"),
 	})
 
-	resolverFn :=  lambdaFactory.CreateGoFunction("resolverFunction", "lambdas/resolver/function.zip", map[string]*string{
-		"NEPTUNE_ENDPOINT":        cluster.ClusterEndpoint().Hostname(),
-		"NEPTUNE_READER_ENDPOINT": cluster.ClusterReadEndpoint().Hostname(),
-		"NEPTUNE_PORT":            jsii.String("8182"),
+	resolverFn :=  lambdaFactory.CreateGoFunction(
+		"resolverFunction", 
+		"lambdas/resolver/function.zip", 
+		map[string]*string{
+			"NEPTUNE_ENDPOINT":        cluster.ClusterEndpoint().Hostname(),
+			"NEPTUNE_READER_ENDPOINT": cluster.ClusterReadEndpoint().Hostname(),
+			"NEPTUNE_PORT":            jsii.String("8182"),
 	})
 
 
@@ -49,10 +59,14 @@ func NewSDRBackendStack(scope constructs.Construct, id string, sprops awscdk.Sta
 	sdrHandlerResource := apiGateway.Root().AddResource(jsii.String("sdr"), nil)
 	sdrHandlerResource.AddMethod(jsii.String("POST"), sdrHandlerIntegration, nil)
 
-	sdrProcessor.AddEventSource(awslambdaeventsources.NewSqsEventSource(queue, &awslambdaeventsources.SqsEventSourceProps{
-		BatchSize: jsii.Number(10),
-		ReportBatchItemFailures: jsii.Bool(true),
-	}))
+	sdrProcessor.AddEventSource(
+		awslambdaeventsources.NewSqsEventSource( 
+			queue, 
+			&awslambdaeventsources.SqsEventSourceProps{
+				BatchSize: jsii.Number(10),
+				ReportBatchItemFailures: jsii.Bool(true),
+			},
+	))
 
 	cfnOutput(stack, map[string]*awscdk.CfnOutputProps{
 		"NeptuneHostEndpoint": {
