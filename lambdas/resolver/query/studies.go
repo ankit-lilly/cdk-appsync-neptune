@@ -12,28 +12,71 @@ import (
 	gremlingo "github.com/apache/tinkerpop/gremlin-go/v3/driver"
 )
 
-var schemaMappings = map[string]string{
-	"versions":      "HAS_VERSION",
-	"organizations": "HAS_ORGANIZATION",
-	"amendments":    "HAS_AMENDMENT",
-	"studyDesigns":  "INCLUDES_DESIGN",
-	"epochs":        "HAS_EPOCH",
-	"arms":          "HAS_ARM",
-	"legalAddress":  "HAS_LEGAL_ADDRESS",
-	"documentedBy":  "DOCUMENTED_BY",
-	"activities":    "HAS_ACTIVITY",
-	"encounters":    "HAS_ENCOUNTER",
+var schemaMappings = map[string]map[string]string{
+	"Study": {
+		"versions":     "HAS_VERSION",
+		"documentedBy": "DOCUMENTED_BY",
+	},
+	"StudyVersion": {
+		"organizations":      "HAS_ORGANIZATION",
+		"amendments":         "HAS_AMENDMENT",
+		"studyDesigns":       "INCLUDES_DESIGN",
+		"biomedicalConcepts": "HAS_BIOMEDICAL_CONCEPT",
+		"bcSurrogates":       "HAS_BC_SURROGATE",
+		"enrollments":        "HAS_ENROLLMENT",
+		"conditions":         "HAS_CONDITION",
+	},
+	"StudyDesign": {
+		"arms":       "HAS_ARM",
+		"epochs":     "HAS_EPOCH",
+		"activities": "HAS_ACTIVITY",
+		"encounters": "HAS_ENCOUNTER",
+	},
+	"Organization": {
+		"legalAddress": "HAS_LEGAL_ADDRESS",
+		"type":         "HAS_ORGANIZATION_TYPE",
+	},
+	"LegalAddress": {
+		"country": "LOCATED_IN",
+	},
+	"BioMedicalConcept": {
+		"code": "HAS_BM_CODE",
+	},
+	"DefinedProcedure": {
+		"code": "HAS_CODE",
+	},
+	"StudyAmendment": {
+		"primaryReason": "HAS_AMENDMENT_PRIMARY_REASON",
+	},
+}
+
+// 2. New map to know the label of the children
+var fieldToChildLabel = map[string]string{
+	"versions":           "StudyVersion",
+	"documentedBy":       "StudyDefinitionDocument",
+	"organizations":      "Organization",
+	"legalAddress":       "LegalAddress",
+	"country":            "Country",
+	"studyDesigns":       "StudyDesign",
+	"arms":               "Arm",
+	"epochs":             "Epoch",
+	"activities":         "Activity",
+	"definedProcedures":  "DefinedProcedure",
+	"biomedicalConcepts": "BioMedicalConcept",
+	"code":               "Code",
+	"title":              "StudyTitle",
 }
 
 var toOneRelations = map[string]bool{
-	"legalAddress": true,
-	"documentedBy": false,
-	"studyType":    true,
-	"country":      true,
-	"type":         true,
+	"legalAddress":  true,
+	"documentedBy":  false,
+	"studyType":     true,
+	"country":       true,
+	"type":          true,
+	"primaryReason": true,
 }
 
-func HandleQueryStudies(ctx context.Context, args map[string]interface{}, selectionSet []string) ([]*models.Study, error) {
+func HandleQueryStudies(ctx context.Context, args map[string]any, selectionSet []string) ([]*models.Study, error) {
 
 	graphSource := gremlin.GetReaderGraphTraversalSource()
 	if graphSource == nil {
@@ -42,7 +85,7 @@ func HandleQueryStudies(ctx context.Context, args map[string]interface{}, select
 
 	parsedFields := parseSelectionSet(selectionSet)
 
-	projectionTraversal := buildProjection(parsedFields)
+	projectionTraversal := buildProjection(parsedFields, "Study")
 
 	finalTraversal := graphSource.V().HasLabel("Study").Map(projectionTraversal)
 
@@ -51,7 +94,7 @@ func HandleQueryStudies(ctx context.Context, args map[string]interface{}, select
 		return nil, fmt.Errorf("failed to query studies: %w", err)
 	}
 
-	var processedResults []interface{}
+	var processedResults []any
 	for _, result := range results {
 		processedResults = append(processedResults, convertMap(result.Data))
 	}
@@ -72,8 +115,8 @@ func HandleQueryStudies(ctx context.Context, args map[string]interface{}, select
 
 }
 
-func parseSelectionSet(selectionSet []string) map[string]interface{} {
-	root := make(map[string]interface{})
+func parseSelectionSet(selectionSet []string) map[string]any {
+	root := make(map[string]any)
 	for _, path := range selectionSet {
 		parts := strings.Split(path, "/")
 		currentMap := root
@@ -82,14 +125,14 @@ func parseSelectionSet(selectionSet []string) map[string]interface{} {
 			isLastPart := (i == len(parts)-1)
 
 			if isLastPart {
-				if _, ok := currentMap[part].(map[string]interface{}); !ok {
+				if _, ok := currentMap[part].(map[string]any); !ok {
 					currentMap[part] = true
 				}
 			} else {
-				nextMap, ok := currentMap[part].(map[string]interface{})
+				nextMap, ok := currentMap[part].(map[string]any)
 
 				if !ok {
-					nextMap = make(map[string]interface{})
+					nextMap = make(map[string]any)
 					currentMap[part] = nextMap
 				}
 
@@ -101,13 +144,13 @@ func parseSelectionSet(selectionSet []string) map[string]interface{} {
 	return root
 }
 
-func buildProjection(fields map[string]interface{}) *gremlingo.GraphTraversal {
+func buildProjection(fields map[string]any, parentLabel string) *gremlingo.GraphTraversal {
 	keys := make([]string, 0, len(fields))
 	for k := range fields {
 		keys = append(keys, k)
 	}
 
-	projectArgs := make([]interface{}, len(keys))
+	projectArgs := make([]any, len(keys))
 	for i, k := range keys {
 		projectArgs[i] = k
 	}
@@ -115,17 +158,18 @@ func buildProjection(fields map[string]interface{}) *gremlingo.GraphTraversal {
 
 	for _, fieldName := range keys {
 		subFields := fields[fieldName]
-
-		subMap, isMap := subFields.(map[string]interface{})
+		subMap, isMap := subFields.(map[string]any)
 
 		if isMap {
-			edgeLabel, ok := schemaMappings[fieldName]
+			edgeLabel, ok := schemaMappings[parentLabel][fieldName]
 			if !ok {
 				t = t.By(gremlingo.T__.Constant(nil))
 				continue
 			}
 
-			traversal := gremlingo.T__.Out(edgeLabel).Map(buildProjection(subMap))
+			childLabel := fieldToChildLabel[fieldName]
+
+			traversal := gremlingo.T__.Out(edgeLabel).Map(buildProjection(subMap, childLabel))
 
 			if !toOneRelations[fieldName] {
 				traversal = traversal.Fold()
@@ -140,25 +184,24 @@ func buildProjection(fields map[string]interface{}) *gremlingo.GraphTraversal {
 			}
 		}
 	}
-	log.Printf("Built projection: %v", t)
 	return t
 }
 
-func convertMap(i interface{}) interface{} {
+func convertMap(i any) any {
 	switch v := i.(type) {
-	case map[interface{}]interface{}:
-		m := make(map[string]interface{})
+	case map[any]any:
+		m := make(map[string]any)
 		for key, val := range v {
 			strKey := fmt.Sprintf("%v", key)
 			m[strKey] = convertMap(val)
 		}
 		return m
-	case map[string]interface{}:
+	case map[string]any:
 		for key, val := range v {
 			v[key] = convertMap(val)
 		}
 		return v
-	case []interface{}:
+	case []any:
 		for i, val := range v {
 			v[i] = convertMap(val)
 		}

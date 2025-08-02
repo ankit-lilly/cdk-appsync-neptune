@@ -9,7 +9,7 @@ import (
 	"log"
 )
 
-func HandleQueryEncounters(ctx context.Context, args map[string]interface{}, selectionSet []string) ([]*models.Encounter, error) {
+func HandleQueryEncounters(ctx context.Context, args map[string]any, selectionSet []string) ([]*models.Encounter, error) {
 
 	finalQuery := `
 		MATCH (e:Encounter)

@@ -15,7 +15,49 @@ type StudyVersion {
   studyDesigns: [StudyDesign!]
   organizations(role: String): [Organization!]
   amendments: [StudyAmendment!]
-  interventions: [StudyIntervention!]
+  studyInterventions: [StudyIntervention!]
+  roles: [String!],
+  biomedicalConcepts: [BioMedicalConcept!]
+  bcSurrogates: [BCSurrogate!]
+  conditions: [Conditions!]
+}
+
+type BioMedicalConcept {
+  id: ID!
+  name: String
+  label: String
+  reference: String
+  instanceType: String!
+  synonyms: [String!]
+  code: BioMedicalConceptCode!
+}
+
+type BioMedicalConceptCode {
+  id: ID!
+  code: String!
+  codeSystem: String!
+  codeSystemVersion: String
+  decode: String!
+  instanceType: String!
+}
+
+type BCSurrogate {
+  id: ID!
+  name: String
+  label: String
+  description: String
+  reference: String
+  instanceType: String!
+}
+
+type Conditions {
+  id: ID!
+  name: String
+  label: String
+  description: String
+  text: String
+  contextIds: [String!]
+  appliesToIds: [String!]
 }
 
 type StudyDesign {
@@ -115,9 +157,40 @@ type StudyCell {
 type StudyAmendment {
   id: ID!
   name: String
+  label: String
   summary: String
-  rationale: String
-  version: StudyVersion!
+  description: String
+  number: String
+  primaryReason: StudyAmendmentPrimaryReason!
+  enrollments: [Enrollment!]
+}
+
+type StudyAmendmentPrimaryReason {
+  id: ID!
+  code: PrimaryReasonCode!
+  instanceType: String!
+}
+
+type PrimaryReasonCode {
+  id: ID!
+  code: String!
+  codeSystem: String!
+  codeSystemVersion: String
+  decode: String!
+  instanceType: String!
+}
+
+type Enrollment {
+  id: ID!
+  name: String
+  quantity: Quantity!
+}
+
+type Quantity {
+  id: ID!
+  value: Int!
+  unit: String
+  instanceType: String
 }
 
 type StudyIntervention {
@@ -162,6 +235,11 @@ type StudyDefinitionDocument {
     type: String
 }
 
+type NodeCount {
+  label: String!
+  count: Int!
+}
+
 type Query {
   study(id: ID!): Study
   studies: [Study!]
@@ -169,6 +247,7 @@ type Query {
   organization(id: ID!): Organization
   activities: [Activity!]
   encounters: [Encounter!]
+  graphStats: [NodeCount!]
 }
 
 type Mutation {

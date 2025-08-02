@@ -5,16 +5,19 @@ GraphQL API For SDR.
 
 It exposes two APIs:
 
-1. GraphQL API for querying the SDR ( neptune database)
+1. GraphQL API for querying the SDR ( Neptune database)
+
 2. A REST API for submitting new SDR.
 
 
 ## How it works
 
 1. The end user/client can submit a new SDR via a REST POST request to the `/sdr` endpoint.
+
 2. The request is received by the Amazon API Gateway, which triggers the SQS event and responds with a 202 status code.
-3. The SDRProcessor Lambda function receives the message from the SQS quueue, parses the SDR data, and transforms it into a format suitable for storage in the 
-Neptune database.
+
+3. The SDRProcessor Lambda function receives the message from the SQS quueue, parses the SDR data, and transforms it into a 
+format suitable for storage in the Neptune database.
 
 ```shell
                             +-----------------------+
@@ -55,12 +58,12 @@ Neptune database.
             | 4. Connects to Neptune                                     |
             |    and writes data                                         |
             v                                                            v
-+-----------------------------------------------------------------------------------+
-|                                                                                   |
-|                               Amazon Neptune / SDR                                |
-|                                (Graph Database)                                   |
-|                                                                                   |
-+-----------------------------------------------------------------------------------+
++---------------------------------------------------------------------------------------+
+|                                                                                       |
+|                               Amazon Neptune / SDR                                    |
+|                                (Graph Database)                                       |
+|                                                                                       |
++---------------------------------------------------------------------------------------+
 
 ```
 

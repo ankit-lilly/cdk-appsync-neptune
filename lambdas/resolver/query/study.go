@@ -19,7 +19,7 @@ func hasField(field string, selectionSet []string) bool {
 	return false
 }
 
-func HandleQueryStudy(ctx context.Context, args map[string]interface{}, selectionSet []string) (*models.Study, error) {
+func HandleQueryStudy(ctx context.Context, args map[string]any, selectionSet []string) (*models.Study, error) {
 	studyID, ok := args["id"].(string)
 	if !ok || studyID == "" {
 		return nil, fmt.Errorf("study ID is required")
@@ -128,7 +128,7 @@ func HandleQueryStudy(ctx context.Context, args map[string]interface{}, selectio
 	)
 
 	log.Printf("FinalQuery: %s\nWith Params: %+v", finalQuery, studyID)
-	params := map[string]interface{}{"id": studyID}
+	params := map[string]any{"id": studyID}
 	records, err := cypher.ExecuteReadQuery(ctx, finalQuery, params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query for study %s: %w", studyID, err)

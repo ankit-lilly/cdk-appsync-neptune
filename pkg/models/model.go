@@ -9,6 +9,11 @@ type Study struct {
 	DocumentedBy []*StudyDefinitionDocument `json:"documentedBy,omitempty"`
 }
 
+type NodeCount struct {
+    Label string `json:"label"`
+    Count int64  `json:"count"` 
+}
+
 type StudyVersion struct {
 	ID                string               `json:"id"`
 	VersionIdentifier string               `json:"versionIdentifier"`
@@ -18,6 +23,61 @@ type StudyVersion struct {
 	Amendments        []*StudyAmendment    `json:"amendments,omitempty"`
 	Interventions     []*StudyIntervention `json:"interventions,omitempty"`
 	Organizations     []*Organization      `json:"organizations,omitempty"`
+	Roles 					 []*string              `json:"roles,omitempty"`
+	BioMedicalConcepts []*BioMedicalConcept `json:"bioMedicalConcepts,omitempty"`
+	BCSurrogates      []*BCSurrogate       `json:"bcSurrogates,omitempty"`
+	Conditions        []*Conditions        `json:"conditions,omitempty"`
+}
+
+type Administration struct {
+	ID           string    `json:"id"`
+	Name         *string   `json:"name,omitempty"`
+	Label        *string   `json:"label,omitempty"`
+	Description  *string   `json:"description,omitempty"`
+	Duration     *Quantity `json:"duration,omitempty"`
+	Dose         *Quantity `json:"dose,omitempty"`
+	Route        *Code     `json:"route,omitempty"`
+	Frequency    *Code     `json:"frequency,omitempty"`
+	InstanceType string    `json:"instanceType"`
+}
+
+
+type BioMedicalConceptCode struct {
+    ID                string `json:"id"`
+    Code              string `json:"code"`
+    CodeSystem        string `json:"codeSystem"`
+    CodeSystemVersion *string `json:"codeSystemVersion,omitempty"` // optional
+    Decode            string `json:"decode"`
+    InstanceType      string `json:"instanceType"`
+}
+
+type BioMedicalConcept struct {
+    ID           string                  `json:"id"`
+    Name         *string                 `json:"name,omitempty"`   // optional
+    Label        *string                 `json:"label,omitempty"`  // optional
+    Reference    *string                 `json:"reference,omitempty"` // optional
+    InstanceType string                  `json:"instanceType"`
+    Synonyms     []string                `json:"synonyms"`
+    Code         *BioMedicalConceptCode `json:"code"`
+}
+
+type BCSurrogate struct {
+    ID           string  `json:"id"`
+    Name         *string `json:"name,omitempty"`
+    Label        *string `json:"label,omitempty"`
+    Description  *string `json:"description,omitempty"`
+    Reference    *string `json:"reference,omitempty"`
+    InstanceType string  `json:"instanceType"`
+}
+
+type Conditions struct {
+    ID           string   `json:"id"`
+    Name         *string  `json:"name,omitempty"`
+    Label        *string  `json:"label,omitempty"`
+    Description  *string  `json:"description,omitempty"`
+    Text         *string  `json:"text,omitempty"`
+    ContextIds   []string `json:"contextIds"`
+    AppliesToIds []string `json:"appliesToIds"`
 }
 
 type StudyDesign struct {
@@ -58,8 +118,8 @@ type Activity struct {
 	Name              *string             `json:"name,omitempty"`
 	Label             *string             `json:"label,omitempty"`
 	Description       *string             `json:"description,omitempty"`
-	definedProcedures []*DefinedProcedure `json:"definedProcedures,omitempty"`
-	instanceType      string              `json:"instanceType"`
+	DefinedProcedures []*DefinedProcedure `json:"definedProcedures,omitempty"`
+	InstanceType      string              `json:"instanceType"`
 }
 
 type DefinedProcedure struct {
@@ -95,7 +155,7 @@ type Arm struct {
 	ID             string             `json:"id"`
 	Name           *string            `json:"name,omitempty"`
 	Description    *string            `json:"description,omitempty"`
-	DataOriginType *ArmDataOriginType `json:"dataOriginType,omitempty"` // FIXED: JSON tag was "type"
+	DataOriginType *ArmDataOriginType `json:"type,omitempty"` // FIXED: JSON tag was "type"
 	StudyDesign    *StudyDesign       `json:"studyDesign,omitempty"`
 }
 
@@ -135,8 +195,41 @@ type StudyAmendment struct {
 	ID        string        `json:"id"`
 	Name      *string       `json:"name,omitempty"`
 	Summary   *string       `json:"summary,omitempty"`
-	Rationale *string       `json:"rationale,omitempty"`
-	Version   *StudyVersion `json:"version,omitempty"`
+	Description *string       `json:"description,omitempty"`
+	Label		 *string       `json:"label,omitempty"`
+	Number		 *string       `json:"number,omitempty"`
+	PrimaryReason *PrimaryReason `json:"primaryReason,omitempty"`
+	Enrollments []*Enrollment `json:"enrollments,omitempty"`
+}
+
+type PrimaryReason struct {
+	ID                string `json:"id"`	
+	Code              *PrimaryReasonCode `json:"code"`
+	InstanceType      string `json:"instanceType"`
+}
+
+type PrimaryReasonCode struct {
+	ID                string `json:"id"`
+	Code              string `json:"code"`
+	CodeSystem        string `json:"codeSystem"`
+	CodeSystemVersion string `json:"codeSystemVersion"`
+	Decode            string `json:"decode"`
+	InstanceType      string `json:"instanceType"`
+}
+
+
+type Enrollment struct {
+	ID          string  `json:"id"`
+	Name        *string `json:"name,omitempty"`
+	Quantity *Quantity `json:"quantity,omitempty"`
+}
+
+type Quantity struct {
+	ID          string  `json:"id"`
+	Value       *int `json:"value,omitempty"`
+	Unit         *string `json:"unit,omitempty"`
+	CodeSystem   *string `json:"codeSystem,omitempty"`
+	InstanceType string  `json:"instanceType"`
 }
 
 type StudyIntervention struct {
@@ -145,6 +238,9 @@ type StudyIntervention struct {
 	Description *string `json:"description,omitempty"`
 	Role        *string `json:"role,omitempty"`
 	Type        *string `json:"type,omitempty"`
+	MinimumResponseDuration *Quantity         `json:"minimumResponseDuration,omitempty"` 
+	Administrations         []*Administration `json:"administrations,omitempty"`
+	InstanceType            string
 }
 
 type OrgType struct {

@@ -14,7 +14,7 @@ import (
 
 func SaveStudyToGraph(ctx context.Context, study models.Study) error {
 
-	var studyMap map[string]interface{}
+	var studyMap map[string]any
 
 	studyJSON, err := json.Marshal(study)
 
@@ -28,7 +28,7 @@ func SaveStudyToGraph(ctx context.Context, study models.Study) error {
 		return fmt.Errorf("failed to unmarshal study JSON: %w", err)
 	}
 
-	params := map[string]interface{}{
+	params := map[string]any{
 		"study": studyMap,
 	}
 
@@ -47,15 +47,27 @@ func SaveStudyToGraph(ctx context.Context, study models.Study) error {
     MERGE (s)-[:HAS_VERSION]->(sv)`
 
 	qDesigns := `
-    UNWIND $study.versions AS v
-    MATCH (sv:StudyVersion {id: v.id})
-    UNWIND v.studyDesigns AS d
-    MERGE (sd:StudyDesign {id: d.id})
-    SET
-        sd.name = d.name,
-        sd.description = d.description,
-        sd.studyType  = d.studyType.decode
-    MERGE (sv)-[:INCLUDES_DESIGN]->(sd)`
+	UNWIND $study.versions AS v
+	MATCH (sv:StudyVersion {id: v.id})
+	UNWIND v.studyDesigns AS d
+	MERGE (sd:StudyDesign {id: d.id})
+	SET
+			sd.name = d.name,
+			sd.label = d.label,
+			sd.description = d.description,
+			sd.rationale = d.rationale,
+			sd.instanceType = d.instanceType
+	MERGE (sv)-[:INCLUDES_DESIGN]->(sd)
+	WITH sd, d
+	WHERE d.studyType IS NOT NULL
+	MERGE (st:Code {id: d.studyType.id})
+	SET
+			st.code = d.studyType.code,
+			st.codeSystem = d.studyType.codeSystem,
+			st.codeSystemVersion = d.studyType.codeSystemVersion,
+			st.decode = d.studyType.decode,
+			st.instanceType = d.studyType.instanceType
+	MERGE (sd)-[:HAS_TYPE]->(st)`
 
 	qArms := `
     UNWIND $study.versions AS v
@@ -152,15 +164,51 @@ func SaveStudyToGraph(ctx context.Context, study models.Study) error {
     MERGE (prev)-[:PRECEDES]->(ep)`
 
 	qAmendments := `
-    UNWIND $study.versions AS v
-    MATCH (sv:StudyVersion {id: v.id})
-    UNWIND v.amendments AS a
-    MERGE (am:StudyAmendment {id: a.id})
-    SET
-        am.name = a.name,
-        am.summary = a.summary,
-        am.rationale = a.rationale
-    MERGE (sv)-[:HAS_AMENDMENT]->(am)`
+			UNWIND $study.versions AS v
+			MATCH (sv:StudyVersion {id: v.id})
+			UNWIND v.amendments AS a
+			MERGE (am:StudyAmendment {id: a.id})
+			SET
+					am.name = a.name,
+					am.description = a.description,
+					am.label = a.label,
+					am.number = a.number,
+					am.summary = a.summary,
+					am.instanceType = a.instanceType
+			MERGE (sv)-[:HAS_AMENDMENT]->(am)
+
+			WITH am, a
+			WHERE a.primaryReason IS NOT NULL
+			MERGE (reason:StudyAmendmentReason {id: a.primaryReason.id})
+			SET reason.instanceType = a.primaryReason.instanceType
+			MERGE (am)-[:HAS_PRIMARY_REASON]->(reason)
+			WITH reason, a, am
+			MERGE (reasonCode:Code {id: a.primaryReason.code.id})
+			SET
+					reasonCode.code = a.primaryReason.code.code,
+					reasonCode.codeSystem = a.primaryReason.code.codeSystem,
+					reasonCode.codeSystemVersion = a.primaryReason.code.codeSystemVersion,
+					reasonCode.decode = a.primaryReason.code.decode,
+					reasonCode.instanceType = a.primaryReason.code.instanceType
+			MERGE (reason)-[:HAS_CODE]->(reasonCode)
+
+			WITH am, a
+			UNWIND a.enrollments AS enrollment
+			MERGE (enroll:SubjectEnrollment {id: enrollment.id})
+			SET
+					enroll.name = enrollment.name,
+					enroll.instanceType = enrollment.instanceType
+			MERGE (am)-[:HAS_ENROLLMENT]->(enroll)
+
+			WITH enroll, enrollment
+			WHERE enrollment.quantity IS NOT NULL
+			MERGE (eq:Quantity {id: enrollment.quantity.id})
+			SET
+					eq.value = enrollment.quantity.value,
+					eq.unit = enrollment.quantity.unit,
+					eq.instanceType = enrollment.quantity.instanceType
+			MERGE (enroll)-[:HAS_QUANTITY]->(eq)
+		`
 
 	qDocuments := `
     UNWIND $study.documentedBy AS d
@@ -171,6 +219,40 @@ func SaveStudyToGraph(ctx context.Context, study models.Study) error {
         doc.description = CASE WHEN d.description IS NOT NULL THEN d.description ELSE '' END,
         doc.label = CASE WHEN d.label IS NOT NULL THEN d.label ELSE '' END
     MERGE (s)-[:DOCUMENTED_BY]->(doc)`
+
+	qBioMedicalConcepts := `
+    UNWIND $study.versions AS v
+    MATCH (sv:StudyVersion {id: v.id})
+    UNWIND v.biomedicalConcepts AS o
+    MERGE (biom:BioMedicalConcept {id: o.id})
+		SET
+			biom.name = o.name,
+			biom.label = o.label,
+			biom.description = o.description,
+			biom.instanceType = o.instanceType
+	  MERGE (sv)-[:HAS_BIO_MEDICAL_CONCEPT]->(biom)
+		MERGE (biomCode:BioMedicalConceptCode {id: o.code.id})
+		SET
+			biomCode.code = o.code.code,
+			biomCode.codeSystem = o.code.codeSystem,
+			biomCode.codeSystemVersion = o.code.codeSystemVersion,
+			biomCode.decode = o.code.decode,
+			biomCode.instanceType = o.code.instanceType
+		MERGE (biom)-[:HAS_BIO_MEDICAL_CONCEPT_CODE]->(biomCode)`
+
+	qBCSurrogate := `
+    UNWIND $study.versions AS v
+    MATCH (sv:StudyVersion {id: v.id})
+    UNWIND v.bcSurrogates AS bs
+    MERGE (bcs: BCSurrogates {id: bs.id})
+		SET
+			bcs.name = bs.name,
+			bcs.label = bs.label,
+			bcs.description = bs.description,
+			bcs.reference = bs.reference,
+			bcs.instanceType = bs.instanceType
+	  MERGE (sv)-[:HAS_BC_SURROGATE]->(bcs)
+	 `
 
 	qOrganizationsAndAddresses := `
     UNWIND $study.versions AS v
@@ -215,21 +297,158 @@ func SaveStudyToGraph(ctx context.Context, study models.Study) error {
         c.instanceType = o.legalAddress.country.instanceType
     MERGE (la)-[:LOCATED_IN]->(c)`
 
+	qStudyInterventions := `
+    UNWIND $study.versions as v
+    MATCH (sv:StudyVersion {id: v.id})
+    UNWIND v.studyInterventions as si
+    MERGE (intervention:StudyIntervention {id: si.id})
+    SET
+        intervention.name = si.name,
+        intervention.label = si.label,
+        intervention.description = si.description,
+        intervention.instanceType = si.instanceType
+    MERGE (sv)-[:HAS_INTERVENTION]->(intervention)
+
+    WITH intervention, si
+    WHERE si.type IS NOT NULL
+    MERGE (it:Code {id: si.type.id})
+    SET
+        it.code = si.type.code,
+        it.codeSystem = si.type.codeSystem,
+        it.codeSystemVersion = si.type.codeSystemVersion,
+        it.decode = si.type.decode,
+        it.instanceType = si.type.instanceType
+    MERGE (intervention)-[:HAS_TYPE]->(it)
+
+    WITH intervention, si
+    WHERE si.role IS NOT NULL
+    MERGE (ir:Code {id: si.role.id})
+    SET
+        ir.code = si.role.code,
+        ir.codeSystem = si.role.codeSystem,
+        ir.codeSystemVersion = si.role.codeSystemVersion,
+        ir.decode = si.role.decode,
+        ir.instanceType = si.role.instanceType
+    MERGE (intervention)-[:HAS_ROLE]->(ir)
+
+    WITH intervention, si
+    UNWIND si.administrations as admin
+    MERGE (adm:Administration {id: admin.id})
+    SET
+        adm.name = admin.name,
+        adm.label = admin.label,
+        adm.description = admin.description,
+        adm.instanceType = admin.instanceType
+    MERGE (intervention)-[:HAS_ADMINISTRATION]->(adm)
+
+    WITH adm, admin
+    WHERE admin.dose IS NOT NULL
+    MERGE (dose:Quantity {id: admin.dose.id})
+    SET
+        dose.value = admin.dose.value,
+        dose.unit = admin.dose.unit,
+        dose.instanceType = admin.dose.instanceType
+    MERGE (adm)-[:HAS_DOSE]->(dose)
+
+    WITH adm, admin
+    WHERE admin.route IS NOT NULL
+    MERGE (route:Code {id: admin.route.id})
+    SET
+        route.code = admin.route.code,
+        route.codeSystem = admin.route.codeSystem,
+        route.decode = admin.route.decode,
+        route.instanceType = admin.route.instanceType
+    MERGE (adm)-[:HAS_ROUTE]->(route)`
+
+	qConditions := `
+    UNWIND $study.versions as v
+    MATCH (sv:StudyVersion {id: v.id})
+    UNWIND v.conditions as c
+    MERGE (cond:Condition {id: c.id})
+    SET
+        cond.name = c.name,
+        cond.label = c.label,
+        cond.description = c.description,
+        cond.text = c.text,
+        cond.instanceType = c.instanceType
+    MERGE (sv)-[:HAS_CONDITION]->(cond)`
+
+	qTitles := `
+    UNWIND $study.versions as v
+    MATCH (sv:StudyVersion {id: v.id})
+    UNWIND v.titles as t
+    MERGE (title:StudyTitle {id: t.id})
+    SET
+        title.text = t.text,
+        title.instanceType = t.instanceType
+    MERGE (sv)-[:HAS_TITLE]->(title)
+
+    WITH title, t
+    WHERE t.type IS NOT NULL
+    MERGE (tt:Code {id: t.type.id})
+    SET
+        tt.code = t.type.code,
+        tt.decode = t.type.decode,
+        tt.codeSystem = t.type.codeSystem,
+        tt.instanceType = t.type.instanceType
+    MERGE (title)-[:HAS_TYPE]->(tt)`
+
+	qStudyIdentifiers := `
+    UNWIND $study.versions as v
+    MATCH (sv:StudyVersion {id: v.id})
+    UNWIND v.studyIdentifiers as si
+    MERGE (ident:StudyIdentifier {id: si.id})
+    SET
+        ident.text = si.text,
+        ident.scopeId = si.scopeId,
+        ident.instanceType = si.instanceType
+    MERGE (sv)-[:HAS_IDENTIFIER]->(ident)`
+
+	qEligibility := `
+    UNWIND $study.versions as v
+    MATCH (sv:StudyVersion {id: v.id})
+    UNWIND v.eligibilityCriterionItems as ec
+    MERGE (crit:EligibilityCriterionItem {id: ec.id})
+    SET
+        crit.name = ec.name,
+        crit.text = ec.text,
+        crit.instanceType = ec.instanceType
+    MERGE (sv)-[:HAS_ELIGIBILITY_CRITERION]->(crit)`
+
+	qNarratives := `
+    UNWIND $study.versions as v
+    MATCH (sv:StudyVersion {id: v.id})
+    UNWIND v.narrativeContentItems as nc
+    MERGE (narr:NarrativeContentItem {id: nc.id})
+    SET
+        narr.name = nc.name,
+        narr.text = nc.text,
+        narr.instanceType = nc.instanceType
+    MERGE (sv)-[:HAS_NARRATIVE_CONTENT]->(narr)`
+
 	driver := cypher.GetDriver()
 	session := driver.NewSession(ctx, neo4j.SessionConfig{})
 	defer session.Close(ctx)
 
-	_, err = session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+	_, err = session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
 		for _, q := range []string{
 			qStudyAndVersions,
+			qBioMedicalConcepts,
+			qBCSurrogate,
 			qDocuments,
 			qDesigns,
+			qEligibility,
+			qTitles,
+			qStudyIdentifiers,
+			qStudyInterventions,
 			qArms,
 			qEpochs,
+			qConditions,
 			qAmendments,
 			qOrganizationsAndAddresses,
 			qEncounters,
 			qActivities,
+			qNarratives,
 		} {
 			result, err := tx.Run(ctx, q, params)
 			if err != nil {

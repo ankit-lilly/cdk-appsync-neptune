@@ -37,6 +37,8 @@ func handler(ctx context.Context, event AppSyncEvent) (interface{}, error) {
 			return query.HandleQueryActivities(ctx, event.Arguments, event.Info.SelectionSetList)
 		case "encounters":
 			return query.HandleQueryEncounters(ctx, event.Arguments, event.Info.SelectionSetList)
+		case "graphStats":
+			return query.HandleQueryGraphStats(ctx, event.Arguments, event.Info.SelectionSetList)
 		default:
 			return nil, fmt.Errorf("unknown query field: %s", event.Info.FieldName)
 		}

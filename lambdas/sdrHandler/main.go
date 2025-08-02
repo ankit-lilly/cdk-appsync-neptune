@@ -35,6 +35,7 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 	q := sqs.NewFromConfig(cfg)
 
 	if err := json.Unmarshal([]byte(request.Body), &payload); err != nil {
+		log.Println("Failed to unmarshal request body:", err)
 		return events.APIGatewayProxyResponse{
 			StatusCode: 400,
 			Body:       "Invalid request body. Please provide a valid JSON payload.",

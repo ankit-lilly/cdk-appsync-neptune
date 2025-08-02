@@ -9,7 +9,7 @@ import (
 	"log"
 )
 
-func HandleQueryActivities(ctx context.Context, args map[string]interface{}, selectionSet []string) ([]*models.Activity, error) {
+func HandleQueryActivities(ctx context.Context, args map[string]any, selectionSet []string) ([]*models.Activity, error) {
 
 	finalQuery := `
 		MATCH (a:Activity)
